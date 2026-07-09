@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Version="1.0.0.0">
+  <PropertyGroup>
+    <OutputName>Airclean</OutputName>
+    <OutputDirectory>K:\School\Smart_home_appliances\Airclean_board</OutputDirectory>
+    <InterOutputDirectory>K:\School\Smart_home_appliances\Airclean_board\output</InterOutputDirectory>
+    <Device>CMS79F723</Device>
+    <Config>EFF9,FFEF</Config>
+    <Compiler>CMSC</Compiler>
+    <Power>0</Power>
+  </PropertyGroup>
+  <PropertyGroup Condition="'Compiler'=='CMSC'">
+    <EnableOptimization>true</EnableOptimization>
+    <EnableAssembler>true</EnableAssembler>
+    <EnableSpeed>false</EnableSpeed>
+    <EnableDebug>false</EnableDebug>
+    <EnableInitial>true</EnableInitial>
+    <WarningLevel>-9</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Filter>源文件</Filter>
+    <Filter>头文件</Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <CompileItem Filter="源文件">main.c</CompileItem>
+    <CompileItem Filter="源文件">board.c</CompileItem>
+    <CompileItem Filter="源文件">tm1628.c</CompileItem>
+  </ItemGroup>
+  <ItemGroup>
+    <IncludeItem Filter="头文件">board.h</IncludeItem>
+    <IncludeItem Filter="头文件">tm1628.h</IncludeItem>
+  </ItemGroup>
+</Project>

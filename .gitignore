@@ -1,0 +1,36 @@
+﻿# 编译中间产物
+*.obj
+*.p1
+*.pre
+*.d
+*.lst
+*.rlf
+*.sdb
+*.sym
+*.map
+*.hxl
+*.cmf
+*.cof
+*.hex
+*.err
+*.as
+
+# 编译输出目录
+output/
+output_verify/
+
+# IDE 用户配置与缓存
+*.cmwproj.user
+*.cmx
+
+# 固件二进制
+*.bin
+*.ram
+
+# 知识库（按需不入库）
+Airclean_board_Context7_KB.md
+context7.json
+
+# 其他
+*.log
+*.tmp
