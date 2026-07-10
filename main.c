@@ -1,6 +1,7 @@
 #include <cms.h>
 #include "board.h"
 #include "tm1628.h"
+#include "Touch_Kscan_Library.h"
 
 #define KEY_MASK_K1  ((unsigned char)0x01)
 #define KEY_MASK_K2  ((unsigned char)0x02)
@@ -15,10 +16,12 @@
 #define TIMER_TMR0_OVERFLOWS_PER_SECOND  ((unsigned char)61)
 #define TIMER_SECONDS_PER_HOUR           ((unsigned int)3600)
 #define TIMER_MAX_HOURS                  ((unsigned char)24)
+#define TOUCH_TMR2_TICKS_PER_SCAN        ((unsigned char)32)
 
 #define KEY_IS_PRESSED(key)  ((key) == KEY_PRESSED_LEVEL)
 
 static unsigned char key_stable_value;
+static volatile unsigned char touch_tmr2_ticks;
 static unsigned char timer_tmr0_overflows;
 
 /*
@@ -50,6 +53,27 @@ static void Timer0_Init(void)
     T0IE = 0;
 
     Timer0_ResetTick();
+}
+
+/* Timer2 sampling follows the timing required by the vendor touch library. */
+static void Touch_Init(void)
+{
+    touch_tmr2_ticks = (unsigned char)0x00;
+    TMR2IF = 0;
+    PIE1 = (unsigned char)(PIE1 | 0B00000010);
+    PR2 = (unsigned char)125;
+    T2CON = (unsigned char)0x05;
+    PEIE = 1;
+    GIE = 1;
+}
+
+static void Touch_Poll(void)
+{
+    if (touch_tmr2_ticks >= TOUCH_TMR2_TICKS_PER_SCAN)
+    {
+        touch_tmr2_ticks = (unsigned char)0x00;
+        __CMS_CheckTouchKey();
+    }
 }
 
 /*
@@ -99,31 +123,7 @@ static void Key_Delay(void)
  */
 static unsigned char Key_ReadRaw(void)
 {
-    unsigned char keys;
-
-    keys = (unsigned char)0x00;
-
-    if (KEY_IS_PRESSED(KEY_TIMER) != (unsigned char)0x00)
-    {
-        keys = (unsigned char)(keys | KEY_MASK_K1);
-    }
-
-    if (KEY_IS_PRESSED(KEY_FILTER) != (unsigned char)0x00)
-    {
-        keys = (unsigned char)(keys | KEY_MASK_K2);
-    }
-
-    if (KEY_IS_PRESSED(KEY_POWER) != (unsigned char)0x00)
-    {
-        keys = (unsigned char)(keys | KEY_MASK_K3);
-    }
-
-    if (KEY_IS_PRESSED(KEY_SPEED) != (unsigned char)0x00)
-    {
-        keys = (unsigned char)(keys | KEY_MASK_K4);
-    }
-
-    return keys;
+    return (unsigned char)(_CMS_KeyFlag[0] & 0B00001111);
 }
 
 /*
@@ -150,6 +150,16 @@ static unsigned char Key_ReadStable(void)
     }
 
     return key_stable_value;
+}
+
+void interrupt Touch_Timer2_ISR(void)
+{
+    if (TMR2IF != 0)
+    {
+        TMR2IF = 0;
+        touch_tmr2_ticks++;
+        __CMS_GetTouchKeyValue();
+    }
 }
 
 /*
@@ -189,6 +199,7 @@ void main(void)
     Board_Init();
     TM1628_Init();
     Timer0_Init();
+    Touch_Init();
 
     led_state = (unsigned char)0x00;
     key_stable_value = (unsigned char)0x00;
@@ -203,6 +214,7 @@ void main(void)
     {
         asm("clrwdt");
 
+        Touch_Poll();
         key_now = Key_ReadStable();
         key_down = (unsigned char)(key_now & (unsigned char)(~key_last));
 

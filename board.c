@@ -25,8 +25,8 @@ void Board_Init(void)
      *
      * 只清除 bit4/bit5/bit6，避免误改其他 RA 引脚。
      */
-    /* RA0-RA3: key inputs; RA4-RA6: TM1628 outputs. */
-    TRISA = (unsigned char)((TRISA | 0B00001111) & 0B10001111);
+    /* RA0-RA3: touch channels; RA4-RA6: TM1628 outputs. */
+    TRISA = (unsigned char)(TRISA & 0B10000000);
 
     /*
      * TM1628A 三线空闲状态：
