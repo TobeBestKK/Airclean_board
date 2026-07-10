@@ -298,14 +298,11 @@ void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
         tens++;
     }
 
-    if ((enabled != (unsigned char)0x00) && (value != (unsigned char)0x00))
-    {
-        dp_on = (unsigned char)0x01;
-    }
-    else
-    {
-        dp_on = (unsigned char)0x00;
-    }
+    /*
+     * DP 作为 DIG5/DIG6 的单位图标（TIME / h），常亮，不随 enabled/value 变化。
+     * enabled 参数保留以维持函数签名兼容，不再用于 DP 控制。
+     */
+    dp_on = (unsigned char)0x01;
 
     TM1628_SetDigitByGrid(TM1628_DIG5_GRID, tens, dp_on);
     TM1628_SetDigitByGrid(TM1628_DIG6_GRID, ones, dp_on);
@@ -313,20 +310,20 @@ void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
 
 /*
  * TM1628_SetDefaultDisplay
- * 开机默认显示：6 位数码管全部显示 0，DP 全灭，不点亮单位图标。
+ * 开机默认显示：6 位数码管全部显示 0，DP 全亮作为单位图标。
  * 对应布局 "000 0 00"：
- *   DIG1/DIG2/DIG3 = PM2.5（000）
- *   DIG4           = 风速档位（0）
- *   DIG5/DIG6      = 定时小时（00）
+ *   DIG1/DIG2/DIG3 = PM2.5（000），DIG1/DIG2 的 DP=PM2.5 图标，DIG3 的 DP=μg/m³ 图标
+ *   DIG4           = 风速档位（0），DP=GEAR 图标
+ *   DIG5/DIG6      = 定时小时（00），DIG5 的 DP=TIME 图标，DIG6 的 DP=h 图标
  */
 void TM1628_SetDefaultDisplay(void)
 {
-    TM1628_SetDigitByGrid((unsigned char)7, (unsigned char)0x00, (unsigned char)0x00);
-    TM1628_SetDigitByGrid((unsigned char)6, (unsigned char)0x00, (unsigned char)0x00);
-    TM1628_SetDigitByGrid((unsigned char)5, (unsigned char)0x00, (unsigned char)0x00);
-    TM1628_SetDigitByGrid((unsigned char)4, (unsigned char)0x00, (unsigned char)0x00);
-    TM1628_SetDigitByGrid((unsigned char)3, (unsigned char)0x00, (unsigned char)0x00);
-    TM1628_SetDigitByGrid((unsigned char)2, (unsigned char)0x00, (unsigned char)0x00);
+    TM1628_SetDigitByGrid((unsigned char)7, (unsigned char)0x00, (unsigned char)0x01);
+    TM1628_SetDigitByGrid((unsigned char)6, (unsigned char)0x00, (unsigned char)0x01);
+    TM1628_SetDigitByGrid((unsigned char)5, (unsigned char)0x00, (unsigned char)0x01);
+    TM1628_SetDigitByGrid((unsigned char)4, (unsigned char)0x00, (unsigned char)0x01);
+    TM1628_SetDigitByGrid((unsigned char)3, (unsigned char)0x00, (unsigned char)0x01);
+    TM1628_SetDigitByGrid((unsigned char)2, (unsigned char)0x00, (unsigned char)0x01);
 }
 
 static void TM1628_SetDigitAllOnByGrid(unsigned char grid)
