@@ -17,7 +17,15 @@
 #define TIMER_SECONDS_PER_HOUR           ((unsigned int)3600)
 #define TIMER_MAX_HOURS                  ((unsigned char)24)
 #define TOUCH_TMR2_TICKS_PER_SCAN        ((unsigned char)32)
+#define UART_SPBRG_9600_16MHZ            ((unsigned char)103)
 
+#define VOICE_COMMAND_WAKEUP     ((unsigned char)0xA0)
+#define VOICE_COMMAND_TURN_ON    ((unsigned char)0xA1)
+#define VOICE_COMMAND_TURN_OFF   ((unsigned char)0xA2)
+#define VOICE_COMMAND_SPEED_UP   ((unsigned char)0xA3)
+#define VOICE_COMMAND_SPEED_DOWN ((unsigned char)0xA4)
+#define VOICE_COMMAND_TIMER_ON   ((unsigned char)0xA5)
+#define VOICE_COMMAND_FILTER     ((unsigned char)0xA6)
 #define KEY_IS_PRESSED(key)  ((key) == KEY_PRESSED_LEVEL)
 
 static unsigned char key_stable_value;
@@ -190,6 +198,7 @@ void main(void)
     unsigned char key_now;
     unsigned char key_last;
     unsigned char key_down;
+    unsigned char voice_command;
     unsigned char timer_hours;
     unsigned int timer_seconds;
 
@@ -200,6 +209,10 @@ void main(void)
     TM1628_Init();
     Timer0_Init();
     Touch_Init();
+    TRISC1 = 1;
+    SPBRG = UART_SPBRG_9600_16MHZ;
+    TXSTA = (unsigned char)0x00;
+    RCSTA = (unsigned char)0x90;
 
     led_state = (unsigned char)0x00;
     key_stable_value = (unsigned char)0x00;
@@ -281,6 +294,104 @@ void main(void)
             TM1628_SetLeds(led_state);
         }
 
+        if (OERR != 0)
+        {
+            CREN = 0;
+            CREN = 1;
+        }
+        else
+        {
+            while (RCIF != 0)
+            {
+                if (FERR != 0)
+                {
+                    voice_command = RCREG;
+                }
+                else
+                {
+                    voice_command = RCREG;
+
+                    switch (voice_command)
+                    {
+                        case VOICE_COMMAND_WAKEUP:
+                            break;
+
+                        case VOICE_COMMAND_TURN_ON:
+                            if ((led_state & LED_MASK_3) == (unsigned char)0x00)
+                            {
+                                led_state = LED_MASK_3;
+                                timer_hours = (unsigned char)0x00;
+                                timer_seconds = (unsigned int)0;
+                                Timer0_ResetTick();
+                                TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x00);
+                            }
+                            break;
+
+                        case VOICE_COMMAND_TURN_OFF:
+                            led_state = (unsigned char)0x00;
+                            timer_hours = (unsigned char)0x00;
+                            timer_seconds = (unsigned int)0;
+                            Timer0_ResetTick();
+                            TM1628_AllOff();
+                            break;
+
+                        case VOICE_COMMAND_SPEED_UP:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                led_state = (unsigned char)(led_state | LED_MASK_4);
+                            }
+                            break;
+
+                        case VOICE_COMMAND_SPEED_DOWN:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_4));
+                            }
+                            break;
+
+                        case VOICE_COMMAND_TIMER_ON:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                if (timer_hours < TIMER_MAX_HOURS)
+                                {
+                                    timer_hours++;
+                                }
+                                else
+                                {
+                                    timer_hours = (unsigned char)0x00;
+                                }
+
+                                timer_seconds = (unsigned int)0;
+                                Timer0_ResetTick();
+
+                                if (timer_hours == (unsigned char)0x00)
+                                {
+                                    led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_1));
+                                    TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x00);
+                                }
+                                else
+                                {
+                                    led_state = (unsigned char)(led_state | LED_MASK_1);
+                                    TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x01);
+                                }
+                            }
+                            break;
+
+                        case VOICE_COMMAND_FILTER:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                led_state = (unsigned char)(led_state ^ LED_MASK_2);
+                            }
+                            break;
+
+                        default:
+                            break;
+                    }
+
+                    TM1628_SetLeds(led_state);
+                }
+            }
+        }
         if (Timer0_PollSecond() != (unsigned char)0x00)
         {
             if (timer_hours != (unsigned char)0x00)
