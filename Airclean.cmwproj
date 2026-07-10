@@ -5,7 +5,7 @@
     <OutputDirectory>K:\School\Smart_home_appliances\Airclean_board</OutputDirectory>
     <InterOutputDirectory>K:\School\Smart_home_appliances\Airclean_board\output</InterOutputDirectory>
     <Device>CMS79F723</Device>
-    <Config>EFF9,FFEF</Config>
+    <Config>E7FB,FFEF</Config>
     <Compiler>CMSC</Compiler>
     <Power>0</Power>
   </PropertyGroup>
