@@ -311,6 +311,24 @@ void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
     TM1628_SetDigitByGrid(TM1628_DIG6_GRID, ones, dp_on);
 }
 
+/*
+ * TM1628_SetDefaultDisplay
+ * 开机默认显示：6 位数码管全部显示 0，DP 全灭，不点亮单位图标。
+ * 对应布局 "000 0 00"：
+ *   DIG1/DIG2/DIG3 = PM2.5（000）
+ *   DIG4           = 风速档位（0）
+ *   DIG5/DIG6      = 定时小时（00）
+ */
+void TM1628_SetDefaultDisplay(void)
+{
+    TM1628_SetDigitByGrid((unsigned char)7, (unsigned char)0x00, (unsigned char)0x00);
+    TM1628_SetDigitByGrid((unsigned char)6, (unsigned char)0x00, (unsigned char)0x00);
+    TM1628_SetDigitByGrid((unsigned char)5, (unsigned char)0x00, (unsigned char)0x00);
+    TM1628_SetDigitByGrid((unsigned char)4, (unsigned char)0x00, (unsigned char)0x00);
+    TM1628_SetDigitByGrid((unsigned char)3, (unsigned char)0x00, (unsigned char)0x00);
+    TM1628_SetDigitByGrid((unsigned char)2, (unsigned char)0x00, (unsigned char)0x00);
+}
+
 static void TM1628_SetDigitAllOnByGrid(unsigned char grid)
 {
     unsigned char low_addr;

@@ -249,7 +249,7 @@ void main(void)
                     timer_hours = (unsigned char)0x00;
                     timer_seconds = (unsigned int)0;
                     Timer0_ResetTick();
-                    TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x00);
+                    TM1628_SetDefaultDisplay();
                 }
             }
             else if ((led_state & LED_MASK_3) != (unsigned char)0x00)
@@ -323,7 +323,7 @@ void main(void)
                                 timer_hours = (unsigned char)0x00;
                                 timer_seconds = (unsigned int)0;
                                 Timer0_ResetTick();
-                                TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x00);
+                                TM1628_SetDefaultDisplay();
                             }
                             break;
 
