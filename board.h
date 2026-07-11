@@ -18,9 +18,6 @@
 #define KEY_POWER      RA2
 #define KEY_TIMER      RA3
 
-#define FAN_VCC        RB0
-#define FAN_PWM        RB3
-
 /* Change to 0 if the real key signal is active-low. */
 #define KEY_PRESSED_LEVEL  1
 
