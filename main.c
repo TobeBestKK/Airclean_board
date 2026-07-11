@@ -1,5 +1,6 @@
 #include <cms.h>
 #include "board.h"
+#include "timer.h"
 #include "tm1628.h"
 #include "Touch_Kscan_Library.h"
 #include "tuya_protocol.h"
@@ -14,7 +15,6 @@
 #define LED_MASK_3   ((unsigned char)0x04)
 #define LED_MASK_4   ((unsigned char)0x08)
 
-#define TIMER_TMR0_OVERFLOWS_PER_SECOND  ((unsigned char)61)
 #define TIMER_SECONDS_PER_HOUR           ((unsigned int)3600)
 #define TIMER_MAX_HOURS                  ((unsigned char)24)
 #define TOUCH_TMR2_TICKS_PER_SCAN        ((unsigned char)32)
@@ -29,52 +29,13 @@
 #define FAN_PWM_MEDIUM_DUTY_TICKS        ((unsigned char)8)
 #define FAN_PWM_HIGH_DUTY_TICKS          ((unsigned char)10)
 
-#define VOICE_COMMAND_WAKEUP     ((unsigned char)0xA0)
-#define VOICE_COMMAND_TURN_ON    ((unsigned char)0xA1)
-#define VOICE_COMMAND_TURN_OFF   ((unsigned char)0xA2)
-#define VOICE_COMMAND_SPEED_UP   ((unsigned char)0xA3)
-#define VOICE_COMMAND_SPEED_DOWN ((unsigned char)0xA4)
-#define VOICE_COMMAND_TIMER_ON   ((unsigned char)0xA5)
-#define VOICE_COMMAND_FILTER     ((unsigned char)0xA6)
 #define KEY_IS_PRESSED(key)  ((key) == KEY_PRESSED_LEVEL)
 
 static unsigned char key_stable_value;
 static volatile unsigned char touch_tmr2_ticks;
-static unsigned char timer_tmr0_overflows;
 static volatile unsigned char fan_pwm_tick;
 static volatile unsigned char fan_pwm_duty_ticks;
 static volatile unsigned char fan_pwm_enabled;
-
-/*
- * Timer0_ResetTick
- * 复位 Timer0 计时基准：清零 TMR0 寄存器、清除溢出标志 T0IF、
- * 并将软件溢出计数器 timer_tmr0_overflows 清零，为下一轮秒计时做准备。
- */
-static void Timer0_ResetTick(void)
-{
-    TMR0 = (unsigned char)0x00;
-    T0IF = 0;
-    timer_tmr0_overflows = (unsigned char)0x00;
-}
-
-/*
- * Timer0_Init
- * 初始化 Timer0 模块：使用内部指令时钟（T0CS=0）、上升沿计数（T0SE=0）、
- * 将预分频器分配给 Timer0（PSA=0）并设置为 1:256（PS2:PS0=111），
- * 关闭 Timer0 中断（T0IE=0），随后调用 Timer0_ResetTick 完成初始复位。
- */
-static void Timer0_Init(void)
-{
-    T0CS = 0;
-    T0SE = 0;
-    PSA = 0;
-    PS2 = 1;
-    PS1 = 1;
-    PS0 = 1;
-    T0IE = 0;
-
-    Timer0_ResetTick();
-}
 
 /* Timer2 sampling follows the timing required by the vendor touch library. */
 static void Touch_Init(void)
@@ -95,29 +56,6 @@ static void Touch_Poll(void)
         touch_tmr2_ticks = (unsigned char)0x00;
         __CMS_CheckTouchKey();
     }
-}
-
-/*
- * Timer0_PollSecond
- * 轮询 Timer0 溢出标志以累计秒数。每次检测到 T0IF 置位则清零并递增
- * 软件溢出计数器；当溢出次数累计到 TIMER_TMR0_OVERFLOWS_PER_SECOND
- *（约 61 次）时认为已过去 1 秒，复位计数器并返回 1，否则返回 0。
- */
-static unsigned char Timer0_PollSecond(void)
-{
-    if (T0IF != 0)
-    {
-        T0IF = 0;
-        timer_tmr0_overflows++;
-
-        if (timer_tmr0_overflows >= TIMER_TMR0_OVERFLOWS_PER_SECOND)
-        {
-            timer_tmr0_overflows = (unsigned char)0x00;
-            return (unsigned char)0x01;
-        }
-    }
-
-    return (unsigned char)0x00;
 }
 
 /*
@@ -392,10 +330,10 @@ void main(void)
         {
             switch (voice_command)
             {
-                        case VOICE_COMMAND_WAKEUP:
+                        case VOICE_CMD_WAKEUP:
                             break;
 
-                        case VOICE_COMMAND_TURN_ON:
+                        case VOICE_CMD_TURN_ON:
                             if ((led_state & LED_MASK_3) == (unsigned char)0x00)
                             {
                                 led_state = LED_MASK_3;
@@ -408,7 +346,7 @@ void main(void)
                             }
                             break;
 
-                        case VOICE_COMMAND_TURN_OFF:
+                        case VOICE_CMD_TURN_OFF:
                             led_state = (unsigned char)0x00;
                             fan_speed_level = FAN_SPEED_LEVEL_OFF;
                             timer_hours = (unsigned char)0x00;
@@ -418,7 +356,7 @@ void main(void)
                             WIFI_ReportPower((unsigned char)0x00);
                             break;
 
-                        case VOICE_COMMAND_SPEED_UP:
+                        case VOICE_CMD_SPEED_UP:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                             {
                                 if (fan_speed_level < FAN_SPEED_LEVEL_MAX)
@@ -435,7 +373,7 @@ void main(void)
                             }
                             break;
 
-                        case VOICE_COMMAND_SPEED_DOWN:
+                        case VOICE_CMD_SPEED_DOWN:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                             {
                                 if (fan_speed_level > FAN_SPEED_LEVEL_OFF)
@@ -452,7 +390,7 @@ void main(void)
                             }
                             break;
 
-                        case VOICE_COMMAND_TIMER_ON:
+                        case VOICE_CMD_TIMER_ON:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                             {
                                 if (timer_hours < TIMER_MAX_HOURS)
@@ -480,7 +418,7 @@ void main(void)
                             }
                             break;
 
-                        case VOICE_COMMAND_FILTER:
+                        case VOICE_CMD_FILTER:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                             {
                                 led_state = (unsigned char)(led_state ^ LED_MASK_2);
