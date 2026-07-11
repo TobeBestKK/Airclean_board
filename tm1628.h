@@ -7,6 +7,7 @@ void TM1628_AllOn(void);
 void TM1628_AllOff(void);
 void TM1628_DigitsAllOn(void);
 void TM1628_SetLeds(unsigned char leds);
+void TM1628_SetSpeedDisplay(unsigned char value);
 void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled);
 void TM1628_SetDefaultDisplay(void);
 void TM1628_WriteByteToAddr(unsigned char addr, unsigned char dat);

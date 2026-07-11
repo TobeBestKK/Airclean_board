@@ -28,6 +28,12 @@ void Board_Init(void)
     /* RA0-RA3: touch channels; RA4-RA6: TM1628 outputs. */
     TRISA = (unsigned char)(TRISA & 0B10000000);
 
+    /* RB0: fan VCC, RB3: fan PWM enable. Keep the fan off at startup. */
+    TRISB0 = 0;
+    TRISB3 = 0;
+    FAN_VCC = 0;
+    FAN_PWM = 0;
+
     /*
      * TM1628A 三线空闲状态：
      * STB = 1
