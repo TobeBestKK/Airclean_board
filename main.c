@@ -1,5 +1,6 @@
 #include <cms.h>
 #include "board.h"
+#include "key.h"
 #include "timer.h"
 #include "tm1628.h"
 #include "Touch_Kscan_Library.h"
@@ -31,7 +32,6 @@
 
 #define KEY_IS_PRESSED(key)  ((key) == KEY_PRESSED_LEVEL)
 
-static unsigned char key_stable_value;
 static volatile unsigned char touch_tmr2_ticks;
 static volatile unsigned char fan_pwm_tick;
 static volatile unsigned char fan_pwm_duty_ticks;
@@ -56,59 +56,6 @@ static void Touch_Poll(void)
         touch_tmr2_ticks = (unsigned char)0x00;
         __CMS_CheckTouchKey();
     }
-}
-
-/*
- * Key_Delay
- * 按键消抖延时：执行约 3000 次空循环，循环中调用 clrwdt 喂看门狗，
- * 为按键二次采样提供足够时间间隔。
- */
-static void Key_Delay(void)
-{
-    unsigned int i;
-
-    for (i = 0; i < 3000; i++)
-    {
-        asm("clrwdt");
-    }
-}
-
-
-/*
- * Key_ReadRaw
- * 读取 4 个按键的原始电平状态并合并为位掩码返回。
- * 依次检测 TIMER/FILTER/POWER/SPEED 按键，按下则分别置
- * KEY_MASK_K1~K4 对应位，返回值中各位表示对应按键当前是否被按下。
- */
-static unsigned char Key_ReadRaw(void)
-{
-    return (unsigned char)(_CMS_KeyFlag[0] & 0B00001111);
-}
-
-/*
- * Key_ReadStable
- * 读取经消抖处理后的稳定按键状态。连续三次调用 Key_ReadRaw 并在
- * 两次采样间插入 Key_Delay，仅当三次读数完全一致时才更新
- * key_stable_value；最终返回该稳定值，避免按键抖动导致误触发。
- */
-static unsigned char Key_ReadStable(void)
-{
-    unsigned char first;
-    unsigned char second;
-    unsigned char third;
-
-    first = Key_ReadRaw();
-    Key_Delay();
-    second = Key_ReadRaw();
-    Key_Delay();
-    third = Key_ReadRaw();
-
-    if ((first == second) && (second == third))
-    {
-        key_stable_value = third;
-    }
-
-    return key_stable_value;
 }
 
 void interrupt Touch_Timer2_ISR(void)
@@ -193,7 +140,6 @@ void main(void)
     WIFI_Init();
 
     led_state = (unsigned char)0x00;
-    key_stable_value = (unsigned char)0x00;
     key_last = (unsigned char)0x00;
     fan_speed_level = FAN_SPEED_LEVEL_OFF;
     timer_hours = (unsigned char)0x00;
