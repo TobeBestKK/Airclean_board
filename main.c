@@ -2,6 +2,7 @@
 #include "board.h"
 #include "tm1628.h"
 #include "Touch_Kscan_Library.h"
+#include "tuya_protocol.h"
 
 #define KEY_MASK_K1  ((unsigned char)0x01)
 #define KEY_MASK_K2  ((unsigned char)0x02)
@@ -204,6 +205,11 @@ void interrupt Touch_Timer2_ISR(void)
         touch_tmr2_ticks++;
         __CMS_GetTouchKeyValue();
     }
+
+    if (RCIF != 0)
+    {
+        WIFI_ISR_Rx();
+    }
 }
 
 /*
@@ -246,10 +252,7 @@ void main(void)
     TM1628_Init();
     Timer0_Init();
     Touch_Init();
-    TRISC1 = 1;
-    SPBRG = UART_SPBRG_9600_16MHZ;
-    TXSTA = (unsigned char)0x00;
-    RCSTA = (unsigned char)0x90;
+    WIFI_Init();
 
     led_state = (unsigned char)0x00;
     key_stable_value = (unsigned char)0x00;
@@ -266,6 +269,40 @@ void main(void)
         asm("clrwdt");
 
         Touch_Poll();
+        WIFI_Process();
+
+        if (wifi_dp_changed != (unsigned char)0x00)
+        {
+            wifi_dp_changed = (unsigned char)0x00;
+
+            if (dp_power != (unsigned char)0x00)
+            {
+                if ((led_state & LED_MASK_3) == (unsigned char)0x00)
+                {
+                    led_state = LED_MASK_3;
+                    fan_speed_level = FAN_SPEED_LEVEL_OFF;
+                    timer_hours = (unsigned char)0x00;
+                    timer_seconds = (unsigned int)0;
+                    Timer0_ResetTick();
+                    TM1628_SetDefaultDisplay();
+                }
+            }
+            else
+            {
+                if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                {
+                    led_state = (unsigned char)0x00;
+                    fan_speed_level = FAN_SPEED_LEVEL_OFF;
+                    timer_hours = (unsigned char)0x00;
+                    timer_seconds = (unsigned int)0;
+                    Timer0_ResetTick();
+                    TM1628_AllOff();
+                }
+            }
+
+            TM1628_SetLeds(led_state);
+        }
+
         key_now = Key_ReadStable();
         key_down = (unsigned char)(key_now & (unsigned char)(~key_last));
 
@@ -281,6 +318,7 @@ void main(void)
                     timer_seconds = (unsigned int)0;
                     Timer0_ResetTick();
                     TM1628_AllOff();
+                    WIFI_ReportPower((unsigned char)0x00);
                 }
                 else
                 {
@@ -290,6 +328,7 @@ void main(void)
                     timer_seconds = (unsigned int)0;
                     Timer0_ResetTick();
                     TM1628_SetDefaultDisplay();
+                    WIFI_ReportPower((unsigned char)0x01);
                 }
             }
             else if ((led_state & LED_MASK_3) != (unsigned char)0x00)
@@ -349,25 +388,10 @@ void main(void)
             TM1628_SetLeds(led_state);
         }
 
-        if (OERR != 0)
+        while ((voice_command = WIFI_GetVoiceCommand()) != (unsigned char)0x00)
         {
-            CREN = 0;
-            CREN = 1;
-        }
-        else
-        {
-            while (RCIF != 0)
+            switch (voice_command)
             {
-                if (FERR != 0)
-                {
-                    voice_command = RCREG;
-                }
-                else
-                {
-                    voice_command = RCREG;
-
-                    switch (voice_command)
-                    {
                         case VOICE_COMMAND_WAKEUP:
                             break;
 
@@ -380,6 +404,7 @@ void main(void)
                                 timer_seconds = (unsigned int)0;
                                 Timer0_ResetTick();
                                 TM1628_SetDefaultDisplay();
+                                WIFI_ReportPower((unsigned char)0x01);
                             }
                             break;
 
@@ -390,6 +415,7 @@ void main(void)
                             timer_seconds = (unsigned int)0;
                             Timer0_ResetTick();
                             TM1628_AllOff();
+                            WIFI_ReportPower((unsigned char)0x00);
                             break;
 
                         case VOICE_COMMAND_SPEED_UP:
@@ -463,11 +489,9 @@ void main(void)
 
                         default:
                             break;
-                    }
-
-                    TM1628_SetLeds(led_state);
-                }
             }
+
+            TM1628_SetLeds(led_state);
         }
         if (Timer0_PollSecond() != (unsigned char)0x00)
         {
@@ -486,6 +510,7 @@ void main(void)
                         fan_speed_level = FAN_SPEED_LEVEL_OFF;
                         Timer0_ResetTick();
                         TM1628_AllOff();
+                        WIFI_ReportPower((unsigned char)0x00);
                     }
                     else
                     {

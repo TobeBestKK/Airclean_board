@@ -25,12 +25,14 @@
     <CompileItem Filter="源文件">main.c</CompileItem>
     <CompileItem Filter="源文件">board.c</CompileItem>
     <CompileItem Filter="源文件">tm1628.c</CompileItem>
+    <CompileItem Filter="源文件">tuya_protocol.c</CompileItem>
   </ItemGroup>
   <ItemGroup>
     <IncludeItem Filter="头文件">board.h</IncludeItem>
     <IncludeItem Filter="头文件">tm1628.h</IncludeItem>
     <IncludeItem Filter="头文件">Touch_Kscan_Library.h</IncludeItem>
     <IncludeItem Filter="头文件">TouchKeyConst.h</IncludeItem>
+    <IncludeItem Filter="头文件">tuya_protocol.h</IncludeItem>
   </ItemGroup>
   <ItemGroup>
     <LibraryItem>CMS_CheckTouch_PT_79F72x_V1.02.lpp</LibraryItem>
