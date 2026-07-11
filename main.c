@@ -18,6 +18,15 @@
 #define TIMER_MAX_HOURS                  ((unsigned char)24)
 #define TOUCH_TMR2_TICKS_PER_SCAN        ((unsigned char)32)
 #define UART_SPBRG_9600_16MHZ            ((unsigned char)103)
+#define FAN_SPEED_LEVEL_OFF              ((unsigned char)0)
+#define FAN_SPEED_LEVEL_LOW              ((unsigned char)1)
+#define FAN_SPEED_LEVEL_MEDIUM           ((unsigned char)2)
+#define FAN_SPEED_LEVEL_HIGH             ((unsigned char)3)
+#define FAN_SPEED_LEVEL_MAX              FAN_SPEED_LEVEL_HIGH
+#define FAN_PWM_PERIOD_TICKS             ((unsigned char)10)
+#define FAN_PWM_LOW_DUTY_TICKS           ((unsigned char)6)
+#define FAN_PWM_MEDIUM_DUTY_TICKS        ((unsigned char)8)
+#define FAN_PWM_HIGH_DUTY_TICKS          ((unsigned char)10)
 
 #define VOICE_COMMAND_WAKEUP     ((unsigned char)0xA0)
 #define VOICE_COMMAND_TURN_ON    ((unsigned char)0xA1)
@@ -31,6 +40,9 @@
 static unsigned char key_stable_value;
 static volatile unsigned char touch_tmr2_ticks;
 static unsigned char timer_tmr0_overflows;
+static volatile unsigned char fan_pwm_tick;
+static volatile unsigned char fan_pwm_duty_ticks;
+static volatile unsigned char fan_pwm_enabled;
 
 /*
  * Timer0_ResetTick
@@ -165,6 +177,30 @@ void interrupt Touch_Timer2_ISR(void)
     if (TMR2IF != 0)
     {
         TMR2IF = 0;
+
+        if (fan_pwm_enabled != (unsigned char)0x00)
+        {
+            if (fan_pwm_tick < fan_pwm_duty_ticks)
+            {
+                FAN_PWM = 1;
+            }
+            else
+            {
+                FAN_PWM = 0;
+            }
+
+            fan_pwm_tick++;
+            if (fan_pwm_tick >= FAN_PWM_PERIOD_TICKS)
+            {
+                fan_pwm_tick = (unsigned char)0x00;
+            }
+        }
+        else
+        {
+            fan_pwm_tick = (unsigned char)0x00;
+            FAN_PWM = 0;
+        }
+
         touch_tmr2_ticks++;
         __CMS_GetTouchKeyValue();
     }
@@ -199,6 +235,7 @@ void main(void)
     unsigned char key_last;
     unsigned char key_down;
     unsigned char voice_command;
+    unsigned char fan_speed_level;
     unsigned char timer_hours;
     unsigned int timer_seconds;
 
@@ -217,6 +254,7 @@ void main(void)
     led_state = (unsigned char)0x00;
     key_stable_value = (unsigned char)0x00;
     key_last = (unsigned char)0x00;
+    fan_speed_level = FAN_SPEED_LEVEL_OFF;
     timer_hours = (unsigned char)0x00;
     timer_seconds = (unsigned int)0;
 
@@ -238,6 +276,7 @@ void main(void)
                 if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                 {
                     led_state = (unsigned char)0x00;
+                    fan_speed_level = FAN_SPEED_LEVEL_OFF;
                     timer_hours = (unsigned char)0x00;
                     timer_seconds = (unsigned int)0;
                     Timer0_ResetTick();
@@ -246,6 +285,7 @@ void main(void)
                 else
                 {
                     led_state = LED_MASK_3;
+                    fan_speed_level = FAN_SPEED_LEVEL_OFF;
                     timer_hours = (unsigned char)0x00;
                     timer_seconds = (unsigned int)0;
                     Timer0_ResetTick();
@@ -287,7 +327,22 @@ void main(void)
 
                 if ((key_down & KEY_MASK_K4) != (unsigned char)0x00)
                 {
-                    led_state = (unsigned char)(led_state ^ LED_MASK_4);
+                    fan_speed_level++;
+                    if (fan_speed_level > FAN_SPEED_LEVEL_MAX)
+                    {
+                        fan_speed_level = FAN_SPEED_LEVEL_OFF;
+                    }
+
+                    if (fan_speed_level == FAN_SPEED_LEVEL_OFF)
+                    {
+                        led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_4));
+                    }
+                    else
+                    {
+                        led_state = (unsigned char)(led_state | LED_MASK_4);
+                    }
+
+                    TM1628_SetSpeedDisplay(fan_speed_level);
                 }
             }
 
@@ -320,6 +375,7 @@ void main(void)
                             if ((led_state & LED_MASK_3) == (unsigned char)0x00)
                             {
                                 led_state = LED_MASK_3;
+                                fan_speed_level = FAN_SPEED_LEVEL_OFF;
                                 timer_hours = (unsigned char)0x00;
                                 timer_seconds = (unsigned int)0;
                                 Timer0_ResetTick();
@@ -329,6 +385,7 @@ void main(void)
 
                         case VOICE_COMMAND_TURN_OFF:
                             led_state = (unsigned char)0x00;
+                            fan_speed_level = FAN_SPEED_LEVEL_OFF;
                             timer_hours = (unsigned char)0x00;
                             timer_seconds = (unsigned int)0;
                             Timer0_ResetTick();
@@ -338,14 +395,34 @@ void main(void)
                         case VOICE_COMMAND_SPEED_UP:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                             {
-                                led_state = (unsigned char)(led_state | LED_MASK_4);
+                                if (fan_speed_level < FAN_SPEED_LEVEL_MAX)
+                                {
+                                    fan_speed_level++;
+                                }
+
+                                if (fan_speed_level != FAN_SPEED_LEVEL_OFF)
+                                {
+                                    led_state = (unsigned char)(led_state | LED_MASK_4);
+                                }
+
+                                TM1628_SetSpeedDisplay(fan_speed_level);
                             }
                             break;
 
                         case VOICE_COMMAND_SPEED_DOWN:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)
                             {
-                                led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_4));
+                                if (fan_speed_level > FAN_SPEED_LEVEL_OFF)
+                                {
+                                    fan_speed_level--;
+                                }
+
+                                if (fan_speed_level == FAN_SPEED_LEVEL_OFF)
+                                {
+                                    led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_4));
+                                }
+
+                                TM1628_SetSpeedDisplay(fan_speed_level);
                             }
                             break;
 
@@ -406,6 +483,7 @@ void main(void)
                     if (timer_hours == (unsigned char)0x00)
                     {
                         led_state = (unsigned char)0x00;
+                        fan_speed_level = FAN_SPEED_LEVEL_OFF;
                         Timer0_ResetTick();
                         TM1628_AllOff();
                     }
@@ -418,5 +496,33 @@ void main(void)
         }
 
         key_last = key_now;
+
+        if (((led_state & LED_MASK_3) != (unsigned char)0x00)
+            && (fan_speed_level != FAN_SPEED_LEVEL_OFF))
+        {
+            FAN_VCC = 1;
+
+            if (fan_speed_level == FAN_SPEED_LEVEL_LOW)
+            {
+                fan_pwm_duty_ticks = FAN_PWM_LOW_DUTY_TICKS;
+            }
+            else if (fan_speed_level == FAN_SPEED_LEVEL_MEDIUM)
+            {
+                fan_pwm_duty_ticks = FAN_PWM_MEDIUM_DUTY_TICKS;
+            }
+            else
+            {
+                fan_pwm_duty_ticks = FAN_PWM_HIGH_DUTY_TICKS;
+            }
+
+            fan_pwm_enabled = (unsigned char)0x01;
+        }
+        else
+        {
+            fan_pwm_enabled = (unsigned char)0x00;
+            fan_pwm_duty_ticks = (unsigned char)0x00;
+            FAN_VCC = 0;
+            FAN_PWM = 0;
+        }
     }
 }

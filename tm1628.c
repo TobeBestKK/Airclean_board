@@ -159,9 +159,11 @@ void TM1628_AllOff(void)
 #define TM1628_LED_SEG1_CLEAR_MASK  ((unsigned char)0xFE)
 #define TM1628_DIGIT_SEG_LOW_MASK   ((unsigned char)0xFE)
 #define TM1628_DIGIT_SEG_HIGH_MASK  ((unsigned char)0x01)
+#define TM1628_DIG4_GRID            ((unsigned char)0x04)
 #define TM1628_DIG5_GRID            ((unsigned char)0x03)
 #define TM1628_DIG6_GRID            ((unsigned char)0x02)
 #define TM1628_DIGIT_DP_MASK        ((unsigned char)0x80)
+#define TM1628_SPEED_MAX_LEVEL      ((unsigned char)3)
 #define TM1628_TIMER_MAX_HOURS      ((unsigned char)24)
 
 static void TM1628_WriteLedByAddr(unsigned char addr, unsigned char on)
@@ -277,6 +279,16 @@ static void TM1628_SetDigitByGrid(unsigned char grid, unsigned char value, unsig
     high_dat = (unsigned char)(tm1628_ram[high_addr] & (unsigned char)(~TM1628_DIGIT_SEG_HIGH_MASK));
     high_dat = (unsigned char)(high_dat | TM1628_GetDigitHigh(value));
     TM1628_WriteByteToAddr(high_addr, high_dat);
+}
+
+void TM1628_SetSpeedDisplay(unsigned char value)
+{
+    if (value > TM1628_SPEED_MAX_LEVEL)
+    {
+        value = TM1628_SPEED_MAX_LEVEL;
+    }
+
+    TM1628_SetDigitByGrid(TM1628_DIG4_GRID, value, (unsigned char)0x01);
 }
 
 void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
