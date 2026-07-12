@@ -2,12 +2,16 @@
 #include "board.h"
 #include "tm1628.h"
 
+/*
+ * TM1628A 显示驱动模块。
+ * 三线 SPI-like 串行接口 (STB/CLK/DIO)，7 Grid x 11 Segment 模式。
+ * 维护一份显示 RAM 影子缓存，支持按地址读改写，避免破坏同地址其他段位。
+ */
+
+/* 显示 RAM 影子缓存 (14 字节，对应 Grid1~7 的低/高字节) */
 static unsigned char tm1628_ram[14];
 
-/*
- * 简单短延时。
- * 如果显示不稳定，可以把 i < 10 改大，例如 i < 30。
- */
+/* 短延时：稳定显示时序，i<10 一般够用，不稳定可调大 */
 static void TM1628_Delay(void)
 {
     unsigned char i;
@@ -18,9 +22,7 @@ static void TM1628_Delay(void)
     }
 }
 
-/*
- * 流水测试用长延时。
- */
+/* 流水测试用长延时（约数百毫秒，含喂看门狗） */
 static void TM1628_LongDelay(void)
 {
     unsigned int d;
@@ -31,9 +33,7 @@ static void TM1628_LongDelay(void)
     }
 }
 
-/*
- * TM1628A 通信开始。
- */
+/* 通信开始：STB 拉低选中芯片 */
 static void TM1628_Start(void)
 {
     TM1628_STB = 1;
@@ -45,9 +45,7 @@ static void TM1628_Start(void)
     TM1628_Delay();
 }
 
-/*
- * TM1628A 通信结束。
- */
+/* 通信结束：STB 拉高释放芯片 */
 static void TM1628_Stop(void)
 {
     TM1628_CLK = 1;
@@ -57,10 +55,7 @@ static void TM1628_Stop(void)
     TM1628_Delay();
 }
 
-/*
- * 向 TM1628A 写 1 字节。
- * TM1628/TM1628A 通常低位先发。
- */
+/* 写 1 字节，低位先发 (LSB first) */
 static void TM1628_WriteByte(unsigned char dat)
 {
     unsigned char i;
@@ -88,9 +83,7 @@ static void TM1628_WriteByte(unsigned char dat)
     }
 }
 
-/*
- * 写 TM1628A 命令。
- */
+/* 独立发一条命令字节（带 Start/Stop） */
 static void TM1628_WriteCmd(unsigned char cmd)
 {
     TM1628_Start();
@@ -99,10 +92,9 @@ static void TM1628_WriteCmd(unsigned char cmd)
 }
 
 /*
- * 固定地址写显示 RAM。
- *
- * addr: 0x00 ~ 0x0D
- * dat : 写入该地址的数据
+ * 固定地址写显示 RAM (0x44 命令)。
+ * 同步更新影子缓存，便于后续按位读改写。
+ * addr: 0x00 ~ 0x0D；dat : 写入该地址的整字节
  */
 void TM1628_WriteByteToAddr(unsigned char addr, unsigned char dat)
 {
@@ -113,15 +105,8 @@ void TM1628_WriteByteToAddr(unsigned char addr, unsigned char dat)
         tm1628_ram[addr] = dat;
     }
 
-    /*
-     * 0x44：固定地址写模式
-     */
-    TM1628_WriteCmd((unsigned char)0x44);
-
-    /*
-     * 0xC0 + addr：设置显示 RAM 地址
-     */
-    cmd = (unsigned char)((unsigned char)0xC0 + addr);
+    TM1628_WriteCmd((unsigned char)0x44);              /* 固定地址写模式 */
+    cmd = (unsigned char)((unsigned char)0xC0 + addr); /* 0xC0 + addr: 设置 RAM 地址 */
 
     TM1628_Start();
     TM1628_WriteByte(cmd);
@@ -129,9 +114,7 @@ void TM1628_WriteByteToAddr(unsigned char addr, unsigned char dat)
     TM1628_Stop();
 }
 
-/*
- * 清屏。
- */
+/* 清屏：14 个地址全部写 0 */
 void TM1628_Clear(void)
 {
     unsigned char i;
@@ -142,30 +125,29 @@ void TM1628_Clear(void)
     }
 }
 
-/*
- * 全灭。
- * 和 Clear 作用一样，保留这个函数名方便 main.c 里读起来清楚。
- */
+/* 全灭（Clear 别名，便于 main.c 区分语义） */
 void TM1628_AllOff(void)
 {
     TM1628_Clear();
 }
 
-#define TM1628_LED_SEG1_MASK        ((unsigned char)0x01)
-#define TM1628_LED_PIN2_ADDR  ((unsigned char)0x02)
-#define TM1628_LED_PIN3_ADDR  ((unsigned char)0x00)
-#define TM1628_LED_PIN4_ADDR  ((unsigned char)0x04)
-#define TM1628_LED_PIN5_ADDR        ((unsigned char)0x06)
-#define TM1628_LED_SEG1_CLEAR_MASK  ((unsigned char)0xFE)
-#define TM1628_DIGIT_SEG_LOW_MASK   ((unsigned char)0xFE)
-#define TM1628_DIGIT_SEG_HIGH_MASK  ((unsigned char)0x01)
-#define TM1628_DIG4_GRID            ((unsigned char)0x04)
-#define TM1628_DIG5_GRID            ((unsigned char)0x03)
-#define TM1628_DIG6_GRID            ((unsigned char)0x02)
-#define TM1628_DIGIT_DP_MASK        ((unsigned char)0x80)
+/* ---- LED 与数码管段位映射宏 ---- */
+#define TM1628_LED_SEG1_MASK        ((unsigned char)0x01)  /* LED 占用 seg1 位 */
+#define TM1628_LED_PIN2_ADDR  ((unsigned char)0x02)       /* LED1 对应 RAM 地址 */
+#define TM1628_LED_PIN3_ADDR  ((unsigned char)0x00)       /* LED2 */
+#define TM1628_LED_PIN4_ADDR  ((unsigned char)0x04)       /* LED3 */
+#define TM1628_LED_PIN5_ADDR        ((unsigned char)0x06)  /* LED4 */
+#define TM1628_LED_SEG1_CLEAR_MASK  ((unsigned char)0xFE)  /* 清 seg1 位 */
+#define TM1628_DIGIT_SEG_LOW_MASK   ((unsigned char)0xFE)  /* 数字低字节段位掩码 */
+#define TM1628_DIGIT_SEG_HIGH_MASK  ((unsigned char)0x01)  /* 数字高字节段位 (bit0) */
+#define TM1628_DIG4_GRID            ((unsigned char)0x04)  /* 风速显示位 */
+#define TM1628_DIG5_GRID            ((unsigned char)0x03)  /* 定时十位 */
+#define TM1628_DIG6_GRID            ((unsigned char)0x02)  /* 定时个位 */
+#define TM1628_DIGIT_DP_MASK        ((unsigned char)0x80)  /* DP 小数点位 */
 #define TM1628_SPEED_MAX_LEVEL      ((unsigned char)3)
 #define TM1628_TIMER_MAX_HOURS      ((unsigned char)24)
 
+/* 按地址写 LED 的 seg1 位 (读改写，保留该地址其他段) */
 static void TM1628_WriteLedByAddr(unsigned char addr, unsigned char on)
 {
     unsigned char dat;
@@ -183,6 +165,7 @@ static void TM1628_WriteLedByAddr(unsigned char addr, unsigned char on)
     TM1628_WriteByteToAddr(addr, dat);
 }
 
+/* 4 位 LED 掩码 → 对应引脚地址 (bit0=LED1 .. bit3=LED4) */
 void TM1628_SetLeds(unsigned char leds)
 {
     TM1628_WriteLedByAddr(TM1628_LED_PIN2_ADDR, (unsigned char)(leds & (unsigned char)0x01));
@@ -191,6 +174,7 @@ void TM1628_SetLeds(unsigned char leds)
     TM1628_WriteLedByAddr(TM1628_LED_PIN5_ADDR, (unsigned char)(leds & (unsigned char)0x08));
 }
 
+/* 数字→低字节 7 段码表 (本板段位定义，非标准 7 段) */
 static unsigned char TM1628_GetDigitLow(unsigned char value)
 {
     unsigned char dat;
@@ -235,6 +219,7 @@ static unsigned char TM1628_GetDigitLow(unsigned char value)
     return dat;
 }
 
+/* 数字→高字节段位 (仅 bit0，部分数字需要) */
 static unsigned char TM1628_GetDigitHigh(unsigned char value)
 {
     unsigned char dat;
@@ -258,6 +243,10 @@ static unsigned char TM1628_GetDigitHigh(unsigned char value)
     return dat;
 }
 
+/*
+ * 在指定 Grid 上显示一位数字 (读改写合并段码与 DP)。
+ * grid: 1~7；value: 0~9；dp_on: 是否点亮该位 DP
+ */
 static void TM1628_SetDigitByGrid(unsigned char grid, unsigned char value, unsigned char dp_on)
 {
     unsigned char low_addr;
@@ -281,6 +270,7 @@ static void TM1628_SetDigitByGrid(unsigned char grid, unsigned char value, unsig
     TM1628_WriteByteToAddr(high_addr, high_dat);
 }
 
+/* 显示风速档位在 DIG4，超界钳至 MAX，DP 常亮作 GEAR 图标 */
 void TM1628_SetSpeedDisplay(unsigned char value)
 {
     if (value > TM1628_SPEED_MAX_LEVEL)
@@ -291,6 +281,10 @@ void TM1628_SetSpeedDisplay(unsigned char value)
     TM1628_SetDigitByGrid(TM1628_DIG4_GRID, value, (unsigned char)0x01);
 }
 
+/*
+ * 显示定时小时在 DIG5(十位)/DIG6(个位)。
+ * DP 常亮作 TIME/h 单位图标，enabled 参数保留以维持接口兼容。
+ */
 void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
 {
     unsigned char tens;
@@ -310,10 +304,7 @@ void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
         tens++;
     }
 
-    /*
-     * DP 作为 DIG5/DIG6 的单位图标（TIME / h），常亮，不随 enabled/value 变化。
-     * enabled 参数保留以维持函数签名兼容，不再用于 DP 控制。
-     */
+    (void)enabled;  /* 保留参数，DP 不随其变化 */
     dp_on = (unsigned char)0x01;
 
     TM1628_SetDigitByGrid(TM1628_DIG5_GRID, tens, dp_on);
@@ -321,12 +312,11 @@ void TM1628_SetTimerDisplay(unsigned char value, unsigned char enabled)
 }
 
 /*
- * TM1628_SetDefaultDisplay
- * 开机默认显示：6 位数码管全部显示 0，DP 全亮作为单位图标。
- * 对应布局 "000 0 00"：
- *   DIG1/DIG2/DIG3 = PM2.5（000），DIG1/DIG2 的 DP=PM2.5 图标，DIG3 的 DP=μg/m³ 图标
- *   DIG4           = 风速档位（0），DP=GEAR 图标
- *   DIG5/DIG6      = 定时小时（00），DIG5 的 DP=TIME 图标，DIG6 的 DP=h 图标
+ * 开机默认显示：6 位数码管全部显示 0，DP 全亮作单位图标。
+ * 布局 "000 0 00"：
+ *   DIG1~3 = PM2.5 (000)，DIG1/2 DP=PM2.5 图标，DIG3 DP=μg/m³
+ *   DIG4   = 风速档位 (0)，DP=GEAR
+ *   DIG5/6 = 定时小时 (00)，DIG5 DP=TIME，DIG6 DP=h
  */
 void TM1628_SetDefaultDisplay(void)
 {
@@ -338,6 +328,7 @@ void TM1628_SetDefaultDisplay(void)
     TM1628_SetDigitByGrid((unsigned char)2, (unsigned char)0x00, (unsigned char)0x01);
 }
 
+/* 把指定 Grid 的所有段位点亮 (段码全 1) */
 static void TM1628_SetDigitAllOnByGrid(unsigned char grid)
 {
     unsigned char low_addr;
@@ -354,6 +345,7 @@ static void TM1628_SetDigitAllOnByGrid(unsigned char grid)
     TM1628_WriteByteToAddr(high_addr, dat);
 }
 
+/* 全部 6 位数码管所有段位点亮 (测试用) */
 void TM1628_DigitsAllOn(void)
 {
     TM1628_SetDigitAllOnByGrid((unsigned char)7);
@@ -364,11 +356,7 @@ void TM1628_DigitsAllOn(void)
     TM1628_SetDigitAllOnByGrid((unsigned char)2);
 }
 
-/*
- * 全亮测试。
- * 如果板子接线和 TM1628A 通信正常，应看到数码管/LED 有反应。
- * 注意：不是每个地址/bit 都一定接了实际 LED，所以可能不是所有灯都亮。
- */
+/* 全亮测试：14 个地址全写 0xFF，用于验证接线与通信 */
 void TM1628_AllOn(void)
 {
     unsigned char i;
@@ -379,39 +367,19 @@ void TM1628_AllOn(void)
     }
 }
 
-/*
- * TM1628A 初始化。
- */
+/* TM1628A 初始化：7 Grid 模式 + 地址自增 + 清屏 + 开显示最大亮度 */
 void TM1628_Init(void)
 {
-    /*
-     * 0x03：显示模式。
-     * 先按常见 7 Grid / 11 Segment 模式测试。
-     */
-    TM1628_WriteCmd((unsigned char)0x03);
-
-    /*
-     * 0x40：地址自增写模式。
-     */
-    TM1628_WriteCmd((unsigned char)0x40);
-
-    /*
-     * 上电后显示 RAM 状态不确定，先清屏。
-     */
-    TM1628_Clear();
-
-    /*
-     * 0x8F：显示开，亮度最大。
-     */
-    TM1628_WriteCmd((unsigned char)0x8F);
+    TM1628_WriteCmd((unsigned char)0x03);  /* 显示模式: 7 Grid / 11 Segment */
+    TM1628_WriteCmd((unsigned char)0x40);  /* 地址自增写模式 */
+    TM1628_Clear();                        /* 上电 RAM 不定，先清屏 */
+    TM1628_WriteCmd((unsigned char)0x8F);  /* 显示开, 亮度最大 */
 }
 
 /*
- * 地址/位流水测试。
- * 用来记录 TM1628A 显示 RAM 到实际 LED/数码管段位的映射。
- *
- * 注意：
- * 不要使用变量名 bit，CMS 编译器里 bit 可能是保留字。
+ * 地址/位流水测试：遍历 14 个地址的每个 bit，逐位点亮。
+ * 用于记录显示 RAM 到实际 LED/数码管段位的映射。
+ * 注意：bit 在 CMS 编译器中可能是保留字，故用 bit_index。
  */
 void TM1628_WalkingTest(void)
 {

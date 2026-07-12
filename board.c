@@ -1,45 +1,36 @@
 #include "board.h"
 
+/*
+ * 板级硬件初始化：时钟、模拟/数字口、TRIS 方向、初始电平。
+ * 适配 CMS79F723，配置参考 CMS79F726 demo。
+ */
 void Board_Init(void)
 {
     asm("nop");
     asm("clrwdt");
 
-    /*
-     * 内部 16MHz。
-     * 该配置参考 CMS79F726 demo，迁移用于 CMS79F723。
-     */
+    /* 内部 16MHz 主频 */
     OSCCON = 0x71;
 
-    /*
-     * 今天只测试 TM1628A 显示，不使用 ADC。
-     * 所以先关闭模拟功能，避免 RA/其他口被配置成模拟输入。
-     */
+    /* 关闭所有模拟功能，使 RA/RB/RC 口可作为数字 GPIO */
     ANSEL0 = 0x00;
     ANSEL1 = 0x00;
     ANSEL2 = 0x00;
 
     /*
-     * RA4/RA5/RA6 设置为输出。
-     * TRISx: 0 = 输出，1 = 输入。
-     *
-     * 只清除 bit4/bit5/bit6，避免误改其他 RA 引脚。
+     * RA0-RA3: 触摸通道（输入，由触摸库配置）
+     * RA4-RA6: TM1628 三线输出（STB/CLK/DIO）
+     * TRISx: 0=输出, 1=输入。仅清 bit0-2 置为输出，保留 bit7 不动。
      */
-    /* RA0-RA3: touch channels; RA4-RA6: TM1628 outputs. */
     TRISA = (unsigned char)(TRISA & 0B10000000);
 
-    /* RB0: fan VCC, RB3: fan PWM enable. Keep the fan off at startup. */
+    /* RB0=风扇电源, RB3=风扇 PWM 使能；开机强制风扇关闭 */
     TRISB0 = 0;
     TRISB3 = 0;
     FAN_VCC = 0;
     FAN_PWM = 0;
 
-    /*
-     * TM1628A 三线空闲状态：
-     * STB = 1
-     * CLK = 1
-     * DIO = 1
-     */
+    /* TM1628A 三线空闲电平：STB/CLK/DIO 均拉高 */
     TM1628_STB = 1;
     TM1628_CLK = 1;
     TM1628_DIO = 1;
