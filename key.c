@@ -16,7 +16,7 @@ static void Key_Delay(void)
 {
     unsigned int i;
 
-    for (i = 0; i < 3000; i++)
+    for (i = 0; i < 1000; i++)
     {
         asm("clrwdt");
     }

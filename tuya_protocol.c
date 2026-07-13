@@ -67,7 +67,7 @@ const unsigned char WifiModeMcu[] = {
 /*=============================================================================
  * UART 环形缓冲区 (中断接收 → 主循环消费)
  *=============================================================================*/
-#define UART_BUF_SIZE  64
+#define UART_BUF_SIZE  16    /* 原32 → 缩至16, 省16B RAM. 涂鸦最大帧14B, 16B足够。*/
 
 /* 环形缓冲区：head=读指针, tail=写指针 */
 typedef struct {
@@ -108,7 +108,9 @@ static unsigned char UART_BufPop(unsigned char *dat)
  * 语音命令队列
  * 协议解析器遇 0xA0~0xA6 时分流到此队列，供 main.c 消费。
  *=============================================================================*/
-#define VOICE_CMD_QUEUE_SIZE  8
+#define VOICE_CMD_QUEUE_SIZE  4   /* 原8 → 缩至4, 省4B RAM.
+                                     用户每秒最多1~2条语音命令, 4条容量够;
+                                     命令码 A0~A6 本身7条, 队列4条足够覆盖突发。 */
 
 static unsigned char voice_cmd_queue[VOICE_CMD_QUEUE_SIZE];
 static unsigned char voice_cmd_head = 0;  /* 读指针 */
@@ -232,9 +234,12 @@ static void alldpUpdate(void);
 /* 协议解析状态变量 */
 static unsigned char wifi_buf_state = 0;   /* 状态机当前状态 */
 static unsigned char wifi_buf_idx = 0;     /* 当前帧已收字节数 */
-static unsigned int  wifi_checksum = 0;    /* 累加校验和 */
+static unsigned char wifi_checksum = 0;    /* 累加校验和 (8-bit即可, 原16-bit浪费1B) */
 static unsigned char wifi_dat_count = 0;   /* DP 数据部分已收字节数 */
-static unsigned char wifi_rx_buf[20];      /* 接收帧缓冲区 (最大 14 字节数据) */
+static unsigned char wifi_rx_buf[16];      /* 原20 → 缩至16, 省4B RAM.
+                                              涂鸦协议最大单帧 (DP value=4字节):
+                                              [55 AA 03 cmd lenH lenL DPid type len d0 d1 d2 d3 crc]
+                                              = 6 + 1 + 1 + 1 + 4 + 1 = 14B, 16B足够。 */
 
 /* WiFi 模组下发的命令字 */
 volatile unsigned char wifi_cmd = 0;
@@ -441,10 +446,32 @@ static void Settuyawifi(void)
     switch (wifi_cmd)
     {
     case 0x00:
-        /* 模组查询心跳: 回复心跳包 */
-        UART_SendBuf(HeartbeatAck, 8);
+    {
+        /*
+         * 模组查询心跳: 第 1 次回复 0x00, 后续回复 0x01.
+         * 若不区分, 模块可能无法进入正常工作状态.
+         */
+        static unsigned char heartbeat_first = 1;
+
+        if (heartbeat_first)
+        {
+            UART_SendByte(0x55);
+            UART_SendByte(0xAA);
+            UART_SendByte(0x03);
+            UART_SendByte(0x00);
+            UART_SendByte(0x00);
+            UART_SendByte(0x01);
+            UART_SendByte(0x00);   /* 第 1 次 data = 0x00 */
+            UART_SendByte(0x03);   /* checksum */
+            heartbeat_first = 0;
+        }
+        else
+        {
+            UART_SendBuf(HeartbeatAck, 8);  /* data = 0x01, checksum = 0x04 */
+        }
         wifi_cmd = 0xFF;
         break;
+    }
 
     case 0x01:
         /* 模组查询产品 ID 和 MCU 版本: 回复产品信息 */
@@ -580,6 +607,7 @@ volatile unsigned char dp_power       = 0;  /* DP 101: 开关 */
 volatile unsigned char dp_timer       = 0;  /* DP 102: 定时 0~24 */
 volatile unsigned char dp_fan_speed   = 0;  /* DP 103: 风速 0~3 */
 volatile unsigned char dp_indicator   = 0;  /* DP 104: 状态指示灯 */
+volatile unsigned char dp_brightness  = 2;  /* DP 105: 亮度, 默认 2 (高); 3=省电熄屏 */
 
 /*
  * alldpUpdate
@@ -612,6 +640,9 @@ static void alldpUpdate(void)
         mcudpUpdate(DPID_INDICATOR, DP_TYPE_BOOL, dp_indicator);
         break;
     case 5:
+        mcudpUpdate(DPID_BRIGHTNESS, DP_TYPE_ENUM, dp_brightness);
+        break;
+    case 6:
         /* 上报完毕 */
         wifi_dp_flag = 0;
         dp_index = 0;
@@ -654,6 +685,12 @@ static void dpInfHandle(unsigned char dpId, unsigned long dpData)
         wifi_dp_changed = 1;
         break;
 
+    case DPID_BRIGHTNESS:                    /* 105: 亮度, enum 0~3 (字节: 0=低,1=中,2=高,3=熄屏) */
+        if (dpData <= 3)
+            dp_brightness = (unsigned char)dpData;
+        wifi_dp_changed = 1;
+        break;
+
     default:
         break;
     }
@@ -689,6 +726,13 @@ void WIFI_ReportIndicator(unsigned char on)
 {
     dp_indicator = (on != 0) ? 1 : 0;
     mcudpUpdate(DPID_INDICATOR, DP_TYPE_BOOL, dp_indicator);
+}
+
+/* 上报显示屏亮度 DP 105 */
+void WIFI_ReportBrightness(unsigned char level)
+{
+    dp_brightness = level;
+    mcudpUpdate(DPID_BRIGHTNESS, DP_TYPE_ENUM, dp_brightness);
 }
 
 /* 触发全量 DP 上报 (置标志，由 alldpUpdate 分次完成) */

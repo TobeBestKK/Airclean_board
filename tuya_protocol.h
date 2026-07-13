@@ -26,6 +26,7 @@
 #define DPID_TIMER        102   /* 定时, value (0~24 h), 0x66 */
 #define DPID_FAN_SPEED    103   /* 风速档位, enum (0~3), 0x67 */
 #define DPID_INDICATOR    104   /* 状态指示灯/滤网, bool, 0x68 */
+#define DPID_BRIGHTNESS   105   /* 显示屏亮度, enum (0~2), 0x69 */
 
 /*=============================================================================
  * WiFi 模块连接状态（由模组上报）
@@ -59,6 +60,7 @@ extern volatile unsigned char dp_power;       /* DP 101: 开关 */
 extern volatile unsigned char dp_timer;       /* DP 102: 定时, 0~24 h */
 extern volatile unsigned char dp_fan_speed;   /* DP 103: 风速, 0~3 */
 extern volatile unsigned char dp_indicator;   /* DP 104: 状态指示灯/滤网 */
+extern volatile unsigned char dp_brightness;  /* DP 105: 亮度, 0~2 */
 
 /*=============================================================================
  * 公开 API
@@ -87,6 +89,7 @@ void WIFI_ReportPower(unsigned char on);
 void WIFI_ReportTimer(unsigned char hours);
 void WIFI_ReportFanSpeed(unsigned char gear);
 void WIFI_ReportIndicator(unsigned char on);
+void WIFI_ReportBrightness(unsigned char level);
 
 /* 提取语音命令字节（用于语音+WiFi 共享同一 UART 的场景）
    返回 0 表示无语音命令，否则返回 A0~A6 的语音命令码 */

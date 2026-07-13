@@ -33,10 +33,10 @@ const unsigned char _CMS_Table_KeyChannel[] = {
 //灵敏度阈值,设定值不可低于20,不能大于1023
 //灵敏度阈值设定必须大于噪声阈值VOL_VALUE
 const unsigned int _CMS_Table_KeyDown[] = {
-	50,			//Key1
-	50,			//Key2
-	50,			//Key3
-	50,			//Key4
+	35,			//Key1
+	35,			//Key2
+	35,			//Key3
+	35,			//Key4
 
 };
 

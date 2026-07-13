@@ -12,9 +12,13 @@ void Board_Init(void)
     /* 内部 16MHz 主频 */
     OSCCON = 0x71;
 
-    /* 关闭所有模拟功能，使 RA/RB/RC 口可作为数字 GPIO */
+    /* 模拟功能配置：
+     * ANSEL0 全关 (RA0~RA7 数字口)
+     * ANSEL1 仅开 AN13(bit5) → RB2 作为 TP-401W 模拟输入，其余 AN8~AN15 关
+     * ANSEL2 全关
+     */
     ANSEL0 = 0x00;
-    ANSEL1 = 0x00;
+    ANSEL1 = 0x20;               /* bit5 = AN13 enable */
     ANSEL2 = 0x00;
 
     /*
@@ -24,11 +28,18 @@ void Board_Init(void)
      */
     TRISA = (unsigned char)(TRISA & 0B10000000);
 
-    /* RB0=风扇电源, RB3=风扇 PWM 使能；开机强制风扇关闭 */
+    /* RB0 = 风扇电源 (输出, 初始关闭)
+     * RB1 = TP-401W 电源 (输出, 初始低=给传感器供电)
+     * RB2 = TP-401W 模拟输出 (输入, 由 ADC 采集)
+     * RB3 = 风扇 PWM (输出, 初始关闭)
+     */
     TRISB0 = 0;
+    TRISB1 = 0;
+    TRISB2 = 1;
     TRISB3 = 0;
     FAN_VCC = 0;
     FAN_PWM = 0;
+    GAS_VCC = 0;                /* 传感器上电：低电平供电 */
 
     /* TM1628A 三线空闲电平：STB/CLK/DIO 均拉高 */
     TM1628_STB = 1;
