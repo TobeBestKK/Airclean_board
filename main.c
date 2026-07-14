@@ -107,6 +107,26 @@ static void Touch_Poll(void)
     }
 }
 
+static void WIFI_ReportPm25Sample(void)
+{
+    unsigned int pm25_value;
+
+    if (Gas_IsWarmupDone() == (unsigned char)0)
+    {
+        return;
+    }
+
+    pm25_value = Gas_ReadPm25();
+    if (pm25_value <= GAS_PM25_MAX)
+    {
+        WIFI_ReportPm25(pm25_value);
+    }
+    else
+    {
+        WIFI_ReportPm25((unsigned int)0);
+    }
+}
+
 /* 中断服务程序：Timer2 中断驱动风扇 PWM 与触摸扫描，UART 接收转发至 WIFI 模块。 */
 void interrupt Touch_Timer2_ISR(void)
 {
@@ -189,6 +209,9 @@ void main(void)
     pm25_sec_cnt = (unsigned char)0x00;
     /* 从 EEPROM 恢复断电前保存的滤网使用度 */
     filter_usage = EEPROM_LoadFilterUsage();
+    WIFI_SetPm25((unsigned int)0);
+    WIFI_SetFilterUsage(filter_usage);
+    WIFI_ReportAll();
     filter_sub_hr   = (unsigned int)0;      /* 微小时累计: 上电清零 */
     filter_view_mode = VIEW_MODE_PM25;      /* 默认显示 PM2.5 数值栏 */
     led_force_mask  = (unsigned char)0x00;  /* 强制叠加 LED 掩码: 上电无叠加 */
@@ -383,6 +406,7 @@ void main(void)
                         filter_usage = (unsigned char)0;
                         filter_sub_hr = (unsigned int)0;
                         EEPROM_SaveFilterUsage((unsigned char)0);
+                        WIFI_ReportFilterUsage((unsigned char)0);
                         led_state = (unsigned char)(led_state ^ LED_MASK_2);
                         /* 上报云端 DP104: 滤网指示开关变更 */
                         WIFI_ReportIndicator((unsigned char)0x00);
@@ -804,6 +828,10 @@ void main(void)
                     {
                         led_state = (unsigned char)0x00;
                         fan_speed_level = FAN_SPEED_LEVEL_OFF;
+                        fan_pwm_enabled = (unsigned char)0x00;
+                        fan_pwm_duty_ticks = (unsigned char)0x00;
+                        FAN_VCC = 0;
+                        FAN_PWM = 0;
                         pm25_sec_cnt = (unsigned char)0x00;
                         filter_sub_hr = (unsigned int)0;                /* 关机清零微小时累计，主值保留 */
                         timer_k1_idle_sec = (unsigned char)0;           /* 定时归零, 复位空闲计数 */
@@ -877,6 +905,7 @@ void main(void)
                             if (_pm <= GAS_PM25_MAX)               /* 合法值 → 显示 PM2.5 数值 + PM2.5 两 DP 灯亮 */
                             {
                                 TM1628_SetPm25Display(_pm);
+                                WIFI_ReportPm25(_pm);
                             }
                             else
                             {
@@ -884,6 +913,7 @@ void main(void)
                                    而不是"跳过不刷新" — 否则保留上一帧旧数值, 用户拔掉传感器后
                                    看到的还是上一时刻的 PM2.5 假数据。 */
                                 TM1628_SetPm25Display((unsigned int)GAS_PM25_INVALID);
+                                WIFI_ReportPm25((unsigned int)0);
                             }
                         }
                     }
@@ -891,6 +921,7 @@ void main(void)
                     {
                         /* 滤网模式：以 2s 节奏重绘，filter_usage 可能通过 4c 进位后改变 */
                         TM1628_SetFilterUsageDisplay(filter_usage);
+                        WIFI_ReportPm25Sample();
                     }
                 }
             }
@@ -959,6 +990,7 @@ void main(void)
                             {
                                 filter_usage++;
                                 EEPROM_SaveFilterUsage(filter_usage);
+                                WIFI_ReportFilterUsage(filter_usage);
                             }
                         else
                         {

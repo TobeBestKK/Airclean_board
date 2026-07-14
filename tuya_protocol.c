@@ -609,6 +609,8 @@ volatile unsigned char dp_fan_speed   = 0;  /* DP 103: 风速 0~3 */
 volatile unsigned char dp_indicator   = 0;  /* DP 104: 状态指示灯 */
 volatile unsigned char dp_brightness  = 2;  /* DP 105: 亮度, 默认 2 (高); 3=省电熄屏 */
 
+volatile unsigned int  dp_pm25         = 0;
+volatile unsigned char dp_filter_usage = 0;
 /*
  * alldpUpdate
  * 分次上报全部 DP (每次调用只报一个，靠主循环周期调用完成全量上报)。
@@ -643,6 +645,12 @@ static void alldpUpdate(void)
         mcudpUpdate(DPID_BRIGHTNESS, DP_TYPE_ENUM, dp_brightness);
         break;
     case 6:
+        mcudpUpdate(DPID_PM25, DP_TYPE_VALUE, dp_pm25);
+        break;
+    case 7:
+        mcudpUpdate(DPID_FILTER_USAGE, DP_TYPE_VALUE, dp_filter_usage);
+        break;
+    case 8:
         /* 上报完毕 */
         wifi_dp_flag = 0;
         dp_index = 0;
@@ -733,6 +741,36 @@ void WIFI_ReportBrightness(unsigned char level)
 {
     dp_brightness = level;
     mcudpUpdate(DPID_BRIGHTNESS, DP_TYPE_ENUM, dp_brightness);
+}
+
+void WIFI_SetPm25(unsigned int value)
+{
+    if (value > (unsigned int)999)
+    {
+        value = (unsigned int)0;
+    }
+    dp_pm25 = value;
+}
+
+void WIFI_SetFilterUsage(unsigned char usage)
+{
+    if (usage > (unsigned char)100)
+    {
+        usage = (unsigned char)100;
+    }
+    dp_filter_usage = usage;
+}
+
+void WIFI_ReportPm25(unsigned int value)
+{
+    WIFI_SetPm25(value);
+    mcudpUpdate(DPID_PM25, DP_TYPE_VALUE, dp_pm25);
+}
+
+void WIFI_ReportFilterUsage(unsigned char usage)
+{
+    WIFI_SetFilterUsage(usage);
+    mcudpUpdate(DPID_FILTER_USAGE, DP_TYPE_VALUE, dp_filter_usage);
 }
 
 /* 触发全量 DP 上报 (置标志，由 alldpUpdate 分次完成) */

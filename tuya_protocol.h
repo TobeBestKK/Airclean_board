@@ -28,6 +28,8 @@
 #define DPID_INDICATOR    104   /* 状态指示灯/滤网, bool, 0x68 */
 #define DPID_BRIGHTNESS   105   /* 显示屏亮度, enum (0~2), 0x69 */
 
+#define DPID_PM25         106   /* PM2.5, value (0~999), 0x6A */
+#define DPID_FILTER_USAGE 107   /* Filter usage, value (0~100), 0x6B */
 /*=============================================================================
  * WiFi 模块连接状态（由模组上报）
  *=============================================================================*/
@@ -62,6 +64,8 @@ extern volatile unsigned char dp_fan_speed;   /* DP 103: 风速, 0~3 */
 extern volatile unsigned char dp_indicator;   /* DP 104: 状态指示灯/滤网 */
 extern volatile unsigned char dp_brightness;  /* DP 105: 亮度, 0~2 */
 
+extern volatile unsigned int  dp_pm25;        /* DP 106: PM2.5, 0~999 */
+extern volatile unsigned char dp_filter_usage;/* DP 107: Filter usage, 0~100 */
 /*=============================================================================
  * 公开 API
  *=============================================================================*/
@@ -91,6 +95,10 @@ void WIFI_ReportFanSpeed(unsigned char gear);
 void WIFI_ReportIndicator(unsigned char on);
 void WIFI_ReportBrightness(unsigned char level);
 
+void WIFI_SetPm25(unsigned int value);
+void WIFI_SetFilterUsage(unsigned char usage);
+void WIFI_ReportPm25(unsigned int value);
+void WIFI_ReportFilterUsage(unsigned char usage);
 /* 提取语音命令字节（用于语音+WiFi 共享同一 UART 的场景）
    返回 0 表示无语音命令，否则返回 A0~A6 的语音命令码 */
 unsigned char WIFI_GetVoiceCommand(void);
