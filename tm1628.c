@@ -379,6 +379,7 @@ void TM1628_SetPm25Display(unsigned int value)
     unsigned char hundreds;
     unsigned char tens;
     unsigned char ones;
+    unsigned int remaining;
 
     /* 传感器开路/未上电或其他异常: 消隐三位 (段码+DP 都写 0)
      * 无效阈值 = 999 (等于 gas_sensor.h 中的 GAS_PM25_MAX, 此处硬编码避免依赖)
@@ -414,18 +415,19 @@ void TM1628_SetPm25Display(unsigned int value)
     /* 百 / 十 / 个位分解 */
     hundreds = (unsigned char)0x00;
     tens     = (unsigned char)0x00;
-    ones     = (unsigned char)value;
+    remaining = value;
 
-    while (ones >= (unsigned char)100)
+    while (remaining >= (unsigned int)100)
     {
-        ones = (unsigned char)(ones - (unsigned char)100);
+        remaining = remaining - (unsigned int)100;
         hundreds++;
     }
-    while (ones >= (unsigned char)10)
+    while (remaining >= (unsigned int)10)
     {
-        ones = (unsigned char)(ones - (unsigned char)10);
+        remaining = remaining - (unsigned int)10;
         tens++;
     }
+    ones = (unsigned char)remaining;
 
     /* 写三位, DIG1/2/3 DP 全亮 (PM2.5 图标的两个 DP 灯 + μg/m³ 单位灯) */
     TM1628_SetDigitByGrid((unsigned char)7, hundreds, (unsigned char)0x01);
