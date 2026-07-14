@@ -21,6 +21,9 @@
 #define GAS_PM25_MAX      ((unsigned int)999)    /* PM2.5 显示上限 */
 #define GAS_PM25_INVALID  ((unsigned int)1000)   /* Gas_ReadPm25 异常返回 (>999=无效) */
 
+/* PM2.5 显示线性标定点：360 保持旧逻辑的低端归零阈值，999 为有效输入上限。 */
+#define GAS_PM25_DISPLAY_ZERO  ((unsigned int)360)
+#define GAS_PM25_DISPLAY_FULL  ((unsigned int)999)
 /* 开短路检测阈值 (左对齐 ADC×4 等效值, 对应 10-bit 的 ~7.5 和 ~1022) */
 #define GAS_ADC_OPEN      ((unsigned int)30)     /* ADC(左对齐) < 30 判开路 */
 #define GAS_ADC_SHORT     ((unsigned int)4090)   /* ADC(左对齐) > 4090 判短路 */

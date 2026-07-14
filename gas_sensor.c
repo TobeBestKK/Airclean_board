@@ -125,36 +125,26 @@ static unsigned int Gas_ReadOnce_Locked(void)
 }
 
 /*=============================================================================
- * 内部: 非线性映射 (移植自 air1.6.1 已验证方案)
+ * 内部: 线性标定映射
  *
- * 输入 x = filtered_conc / 20, 范围 0~49 (0~999 / 20)
- *   x ≤ 30 段: 线性映射 (y = x*5/3 - 30), x<18 时返回 0
- *   x > 30 段: 二次曲线拟合 (适应 TP-401W 高浓度非线性)
- * 输出: 0~500
+ * 输入为滤波后的原始浓度值。低于 GAS_PM25_DISPLAY_ZERO 显示 0，
+ * 达到 GAS_PM25_DISPLAY_FULL 显示 500，中间范围按比例映射。
+ * 直接使用原始值，避免 /20 量化、二次曲线和额外放大导致的跳变与过早封顶。
  *============================================================================*/
-static unsigned int MapToDisplay(unsigned int x)
+static unsigned int MapToDisplay(unsigned int value)
 {
-    unsigned int y;
+    unsigned int span;
 
-    if (x <= (unsigned int)30)
-    {
-        if (x < (unsigned int)18)
-            return (unsigned int)0;
-        y = x * 5U / 3U;
-        if (y < 30U) y = 0U;
-        else y = y - 30U;
-        if (y > 500U) y = 500U;
-        return y;
-    }
-    else
-    {
-        unsigned int d = x - (unsigned int)30;
-        y = (d * d * 155U) / 125U;
-        y = y + (d * 5U / 3U);
-        y = y + 22U;
-        if (y > 500U) y = 500U;
-        return y;
-    }
+    if (value <= GAS_PM25_DISPLAY_ZERO)
+        return (unsigned int)0;
+    if (value >= GAS_PM25_DISPLAY_FULL)
+        return (unsigned int)500;
+
+    span = GAS_PM25_DISPLAY_FULL - GAS_PM25_DISPLAY_ZERO;
+    return (unsigned int)(
+        ((unsigned long)(value - GAS_PM25_DISPLAY_ZERO) * 500UL
+         + (unsigned long)span / 2UL) / (unsigned long)span
+    );
 }
 
 /*=============================================================================
@@ -188,7 +178,6 @@ unsigned int Gas_ReadPm25(void)
     unsigned int  ad_sum;
 
     unsigned int  raw_conc;
-    unsigned int  raw_display;
 
     /* 1) 传感器未上电 */
     if (GAS_VCC != (unsigned char)0x00)
@@ -256,8 +245,7 @@ unsigned int Gas_ReadPm25(void)
         /* 防抖未满: 返回上次有效值 (若 filtered_val 有效) */
         if (filtered_val > (unsigned int)0)
         {
-            raw_display = filtered_val / 20U;
-            return MapToDisplay(raw_display);
+            return MapToDisplay(filtered_val);
         }
         return GAS_PM25_INVALID;
     }
@@ -272,8 +260,7 @@ unsigned int Gas_ReadPm25(void)
         }
         if (filtered_val > (unsigned int)0)
         {
-            raw_display = filtered_val / 20U;
-            return MapToDisplay(raw_display);
+            return MapToDisplay(filtered_val);
         }
         return GAS_PM25_INVALID;
     }
@@ -309,16 +296,8 @@ unsigned int Gas_ReadPm25(void)
     if (filtered_val > (unsigned int)999)
         filtered_val = (unsigned int)999;
 
-    /* 6) 非线性映射
-       raw_display = filtered_val / 20 → 0~49
-       MapToDisplay(raw_display) → 0~500, 再 ×4 放大 (用户要求扩大 4 倍) */
-    raw_display = filtered_val / 20U;
-    {
-        unsigned int _display = MapToDisplay(raw_display);
-        _display = _display * 3U;
-        if (_display > 500U) _display = 500U;
-        return _display;
-    }
+    /* 6) 直接线性标定映射到 0~500。 */
+    return MapToDisplay(filtered_val);
 }
 
 /*=============================================================================
