@@ -10,6 +10,16 @@
 
 /* Timer0 溢出累计计数器 */
 static unsigned char timer_tmr0_overflows;
+/* 初始化 Timer2：触摸扫描和风扇 PWM 共用的周期中断时基。 */
+void Timer2_Init(void)
+{
+    TMR2IF = 0;
+    PIE1 = (unsigned char)(PIE1 | 0B00000010);  /* TMR2IE = 1 */
+    PR2 = (unsigned char)125;
+    T2CON = (unsigned char)0x05;                /* 后分频 1:1, 预分频 1:4, 开 TMR2 */
+    PEIE = 1;
+    GIE = 1;
+}
 
 /* 复位 Timer0 计时基准（清计数、清中断标志、清溢出累计） */
 void Timer0_ResetTick(void)

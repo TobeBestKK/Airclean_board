@@ -4,5 +4,6 @@
 void Timer0_Init(void);
 void Timer0_ResetTick(void);
 unsigned char Timer0_PollSecond(void);
+void Timer2_Init(void);
 
 #endif

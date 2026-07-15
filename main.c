@@ -7,6 +7,8 @@
 #include "tuya_protocol.h"
 #include "gas_sensor.h"
 #include "eeprom.h"
+#include "config.h"
+#include "fan.h"
 
 /*
  * 空气净化器主板主程序 (CMS79F723)。
@@ -14,87 +16,14 @@
  * 主循环按以下顺序处理：触摸扫描 → WiFi 协议 → DP 下发 → 按键 → 语音 → 定时 → 风扇输出。
  */
 
-/* 按键位掩码：bit0=K1(定时) bit1=K2(指示) bit2=K3(电源) bit3=K4(风速) */
-#define KEY_MASK_K1  ((unsigned char)0x01)
-#define KEY_MASK_K2  ((unsigned char)0x02)
-#define KEY_MASK_K3  ((unsigned char)0x04)
-#define KEY_MASK_K4  ((unsigned char)0x08)
-
-/* LED 位掩码：bit0=LED1(定时图标) bit1=LED2(滤网指示) bit2=LED3(电源) bit3=LED4(风速) */
-#define LED_MASK_1   ((unsigned char)0x01)
-#define LED_MASK_2   ((unsigned char)0x02)
-#define LED_MASK_3   ((unsigned char)0x04)
-#define LED_MASK_4   ((unsigned char)0x08)
-
-/* 定时与触摸扫描常量 */
-#define TIMER_SECONDS_PER_HOUR           ((unsigned int)3600)
-#define TIMER_MAX_HOURS                  ((unsigned char)24)
-#define TOUCH_TMR2_TICKS_PER_SCAN        ((unsigned char)32)
-#define UART_SPBRG_9600_16MHZ            ((unsigned char)103)
-
-/* 风扇档位与 PWM 占空比 (周期 10 tick) */
-#define FAN_SPEED_LEVEL_OFF              ((unsigned char)0)
-#define FAN_SPEED_LEVEL_LOW              ((unsigned char)1)
-#define FAN_SPEED_LEVEL_MEDIUM           ((unsigned char)2)
-#define FAN_SPEED_LEVEL_HIGH             ((unsigned char)3)
-#define FAN_SPEED_LEVEL_MAX              FAN_SPEED_LEVEL_HIGH
-#define FAN_PWM_PERIOD_TICKS             ((unsigned char)10)
-#define FAN_PWM_LOW_DUTY_TICKS           ((unsigned char)6)
-#define FAN_PWM_MEDIUM_DUTY_TICKS        ((unsigned char)8)
-#define FAN_PWM_HIGH_DUTY_TICKS          ((unsigned char)10)
-
-#define KEY_IS_PRESSED(key)  ((key) == KEY_PRESSED_LEVEL)
-
-/* K3 长按配网阈值：约 2 秒 (主循环 ~4ms × 500) */
-#define K3_LONG_PRESS_TICKS  ((unsigned int)500)
-
-/* K2 长按滤网指示灯阈值：约 2 秒 (与 K3 相同，统一操作手感) */
-#define K2_LONG_PRESS_TICKS  ((unsigned int)500)
-
-/* PM2.5 异味显示刷新间隔 (单位: 秒，使用 Timer0 秒节拍累计 */
-#define PM25_REFRESH_INTERVAL_SEC  ((unsigned char)2)
-
-/* 滤网使用度 (0~100)：上限与微小时进位阈值
- * 微小时 (filter_sub_hr) = 每秒 +2/+4/+8 点"微单位"，满 3600 则进位 2/4/8 使用度
- *   轻污染 PM2.5 <100:  2 使用度/小时
- *   中污染 100~199:    4 使用度/小时
- *   重污染 >=200:       8 使用度/小时
- */
-#define FILTER_USAGE_MAX        ((unsigned char)100)
-#define FILTER_SUB_HR_PER_UNIT  ((unsigned int)3600)
-#define FILTER_ADD_LIGHT        ((unsigned char)2)
-#define FILTER_ADD_MEDIUM       ((unsigned char)4)
-#define FILTER_ADD_HEAVY        ((unsigned char)8)
-#define PM25_LEVEL_LIGHT_MAX    ((unsigned int)150)   /* 0~150 轻度污染 */
-#define PM25_LEVEL_MEDIUM_MAX   ((unsigned int)300)   /* 151~300 中度污染 */
-
-/* 滤网使用度告警阈值: 当 filter_usage > 此值时, 自动强制点亮 LED3(电源位置)
-   作为"滤网需要更换"的提醒灯。使用独立掩码 OR 叠加, 不修改用户 led_state。 */
-#define FILTER_USAGE_WARN_THRESH  ((unsigned char)90)
-
-/* 显示模式 (DIG7/DIG6/DIG5 三位 PM2.5 栏切换):
- *   0 = 显示 PM2.5 数值 (默认)
- *   1 = 显示 滤网使用度 (0~100)
- */
-#define VIEW_MODE_PM25          ((unsigned char)0x00)
-#define VIEW_MODE_FILTER        ((unsigned char)0x01)
-
 /* Timer2 中断驱动的软件 PWM 与触摸扫描计数器 */
 static volatile unsigned char touch_tmr2_ticks;   /* Timer2 周期累计，达阈值触发触摸扫描 */
-static volatile unsigned char fan_pwm_tick;       /* PWM 当前周期内 tick 计数 */
-static volatile unsigned char fan_pwm_duty_ticks; /* PWM 占空比 (高电平 tick 数) */
-static volatile unsigned char fan_pwm_enabled;    /* PWM 输出使能标志 */
 
 /* 初始化 Timer2，按厂商触摸库要求的采样时序配置周期与中断。 */
 static void Touch_Init(void)
 {
     touch_tmr2_ticks = (unsigned char)0x00;
-    TMR2IF = 0;
-    PIE1 = (unsigned char)(PIE1 | 0B00000010);  /* TMR2IE = 1 */
-    PR2 = (unsigned char)125;
-    T2CON = (unsigned char)0x05;                /* 后分频 1:1, 预分频 1:4, 开 TMR2 */
-    PEIE = 1;
-    GIE = 1;
+    Timer2_Init();
 }
 
 /* 轮询触摸扫描：累计 Timer2 周期达阈值时调用一次按键检测。 */
@@ -134,29 +63,7 @@ void interrupt Touch_Timer2_ISR(void)
     {
         TMR2IF = 0;
 
-        /* 软件 PWM：tick < duty 输出高，否则低；满周期归零 */
-        if (fan_pwm_enabled != (unsigned char)0x00)
-        {
-            if (fan_pwm_tick < fan_pwm_duty_ticks)
-            {
-                FAN_PWM = 1;
-            }
-            else
-            {
-                FAN_PWM = 0;
-            }
-
-            fan_pwm_tick++;
-            if (fan_pwm_tick >= FAN_PWM_PERIOD_TICKS)
-            {
-                fan_pwm_tick = (unsigned char)0x00;
-            }
-        }
-        else
-        {
-            fan_pwm_tick = (unsigned char)0x00;
-            FAN_PWM = 0;
-        }
+        Fan_Timer2Tick();
 
         /* 触摸扫描节拍累计 + 触摸库采样 */
         touch_tmr2_ticks++;
@@ -828,10 +735,7 @@ void main(void)
                     {
                         led_state = (unsigned char)0x00;
                         fan_speed_level = FAN_SPEED_LEVEL_OFF;
-                        fan_pwm_enabled = (unsigned char)0x00;
-                        fan_pwm_duty_ticks = (unsigned char)0x00;
-                        FAN_VCC = 0;
-                        FAN_PWM = 0;
+                        Fan_Stop();
                         pm25_sec_cnt = (unsigned char)0x00;
                         filter_sub_hr = (unsigned int)0;                /* 关机清零微小时累计，主值保留 */
                         timer_k1_idle_sec = (unsigned char)0;           /* 定时归零, 复位空闲计数 */
@@ -1056,34 +960,8 @@ void main(void)
         key_last = key_now;
 
         /* ---- 段5: 风扇 PWM 输出 ---- */
-        if (((led_state & LED_MASK_3) != (unsigned char)0x00)
-            && (fan_speed_level != FAN_SPEED_LEVEL_OFF))
-        {
-            FAN_VCC = 1;  /* 接通风扇电源 */
-
-            /* 按档位选择占空比 */
-            if (fan_speed_level == FAN_SPEED_LEVEL_LOW)
-            {
-                fan_pwm_duty_ticks = FAN_PWM_LOW_DUTY_TICKS;
-            }
-            else if (fan_speed_level == FAN_SPEED_LEVEL_MEDIUM)
-            {
-                fan_pwm_duty_ticks = FAN_PWM_MEDIUM_DUTY_TICKS;
-            }
-            else
-            {
-                fan_pwm_duty_ticks = FAN_PWM_HIGH_DUTY_TICKS;
-            }
-
-            fan_pwm_enabled = (unsigned char)0x01;  /* ISR 中开始输出 PWM */
-        }
-        else
-        {
-            /* 关机或风速为 0：断电并停 PWM */
-            fan_pwm_enabled = (unsigned char)0x00;
-            fan_pwm_duty_ticks = (unsigned char)0x00;
-            FAN_VCC = 0;
-            FAN_PWM = 0;
-        }
+        Fan_UpdateOutput(
+            (unsigned char)((led_state & LED_MASK_3) != (unsigned char)0x00),
+            fan_speed_level);
     }
 }

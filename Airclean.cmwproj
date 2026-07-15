@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <CompileItem Filter="源文件">main.c</CompileItem>
+    <CompileItem Filter="源文件">fan.c</CompileItem>
     <CompileItem Filter="源文件">timer.c</CompileItem>
     <CompileItem Filter="源文件">board.c</CompileItem>
     <CompileItem Filter="源文件">tm1628.c</CompileItem>
@@ -33,6 +34,7 @@
   </ItemGroup>
   <ItemGroup>
     <IncludeItem Filter="头文件">board.h</IncludeItem>
+    <IncludeItem Filter="头文件">config.h</IncludeItem>
     <IncludeItem Filter="头文件">timer.h</IncludeItem>
     <IncludeItem Filter="头文件">tm1628.h</IncludeItem>
     <IncludeItem Filter="头文件">Touch_Kscan_Library.h</IncludeItem>
@@ -41,6 +43,7 @@
     <IncludeItem Filter="头文件">key.h</IncludeItem>
     <IncludeItem Filter="头文件">gas_sensor.h</IncludeItem>
     <IncludeItem Filter="头文件">eeprom.h</IncludeItem>
+    <IncludeItem Filter="头文件">fan.h</IncludeItem>
   </ItemGroup>
   <ItemGroup>
     <LibraryItem>CMS_CheckTouch_PT_79F72x_V1.02.lpp</LibraryItem>

@@ -177,7 +177,7 @@ void WIFI_Init(void)
     TRISC1 = 1;
 
     /* Baud = Fosc / (16 * (SPBRG + 1)) → 16MHz / (16 * 104) ≈ 9615 bps (误差 0.16%) */
-    SPBRG = 103;
+    SPBRG = UART_SPBRG_9600_16MHZ;
 
     /* 直接写寄存器避免位名兼容性问题:
      * TXSTA: TXEN=1, SYNC=0, BRGH=0 → 0x20

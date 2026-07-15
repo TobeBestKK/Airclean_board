@@ -1,6 +1,12 @@
 #ifndef __TM1628_H__
 #define __TM1628_H__
 
+/* bit0=LED1(定时图标) bit1=LED2(滤网指示) bit2=LED3(电源) bit3=LED4(风速) */
+#define LED_MASK_1   ((unsigned char)0x01)
+#define LED_MASK_2   ((unsigned char)0x02)
+#define LED_MASK_3   ((unsigned char)0x04)
+#define LED_MASK_4   ((unsigned char)0x08)
+
 void TM1628_Init(void);
 void TM1628_Clear(void);
 void TM1628_AllOn(void);
