@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <CompileItem Filter="源文件">main.c</CompileItem>
+    <CompileItem Filter="源文件">self_check.c</CompileItem>
     <CompileItem Filter="源文件">fan.c</CompileItem>
     <CompileItem Filter="源文件">timer.c</CompileItem>
     <CompileItem Filter="源文件">board.c</CompileItem>
@@ -34,6 +35,7 @@
   </ItemGroup>
   <ItemGroup>
     <IncludeItem Filter="头文件">board.h</IncludeItem>
+    <IncludeItem Filter="头文件">self_check.h</IncludeItem>
     <IncludeItem Filter="头文件">config.h</IncludeItem>
     <IncludeItem Filter="头文件">timer.h</IncludeItem>
     <IncludeItem Filter="头文件">tm1628.h</IncludeItem>

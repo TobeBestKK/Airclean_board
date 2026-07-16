@@ -1,21 +1,21 @@
 #include "tuya_protocol.h"
 
 /*=============================================================================
- * 涂鸦串口通讯协议 (MCU 端)，适配 CMS79F723 EUSART (RC0/TX, RC1/RX, 9600bps)
+ * 涂鸦串口通讯协议 (MCU 端), 适配 CMS79F723 EUSART (RC0/TX, RC1/RX, 9600bps)
  *
- * 帧结构: [55 AA] [版本03] [命令] [长度H] [长度L] [数据...] [校验和]
+ * 帧结构: [55 AA] [版本字段] [命令] [长度H] [长度L] [数据...] [校验和]
  * 校验和 = (帧头 + 版本 + 命令 + 长度H + 长度L + 数据各字节) % 256
  *
  * 注意:
- *   1. ProductkeyMcuv[] 内 PID 须替换为涂鸦 IoT 平台实际产品 ID。
- *   2. DP ID 定义见 tuya_protocol.h，须与平台一致。
- *   3. 语音模块 (SU-03T) 与 WiFi 模块共享同一 UART，按字节值区分:
- *      0x55 开头 → WiFi 协议帧；0xA0~0xA6 → 语音命令，存入语音队列。
- *=============================================================================*/
+ *   1. ProductkeyMcuv[] 内 PID 须替换为涂鸦 IoT 平台实际产品 ID
+ *   2. DP ID 定义见 tuya_protocol.h, 须与平台一致
+ *   3. 语音模块 (SU-03T) 与 WiFi 模块共享同一 UART, 按字节值区分:
+ *      0x55 开头 → WiFi 协议帧; 0xA0~0xA6 → 语音命令, 存入语音队列
+ *===========================================================================*/
 
 /*=============================================================================
  * 常量数据: 涂鸦协议预置帧
- *=============================================================================*/
+ *===========================================================================*/
 
 /* 产品 ID / MCU 版本信息。JSON: {"p":"xidx1m5hf2birubg","v":"1.0.0","m":0} */
 const unsigned char ProductkeyMcuv[] = {
@@ -66,10 +66,9 @@ const unsigned char WifiModeMcu[] = {
 
 /*=============================================================================
  * UART 环形缓冲区 (中断接收 → 主循环消费)
- *=============================================================================*/
-#define UART_BUF_SIZE  16    /* 原32 → 缩至16, 省16B RAM. 涂鸦最大帧14B, 16B足够。*/
+ *===========================================================================*/
+#define UART_BUF_SIZE  16    /* 当前支持的 value 帧最长 15B (含校验), 16B 可容纳一帧 */
 
-/* 环形缓冲区：head=读指针, tail=写指针 */
 typedef struct {
     unsigned char head;
     unsigned char tail;
@@ -78,21 +77,20 @@ typedef struct {
 
 static CircleBuffer uart_rx_buf;
 
-/* 压入一字节 (ISR 调用)，满时覆盖最早数据 */
+/* 压入一字节 (ISR 调用), 满时覆盖最早数据 */
 static void UART_BufPush(unsigned char dat)
 {
     uart_rx_buf.buf[uart_rx_buf.tail] = dat;
     if (++uart_rx_buf.tail >= UART_BUF_SIZE)
         uart_rx_buf.tail = 0;
-    /* 缓冲区满时覆盖最早的数据 */
-    if (uart_rx_buf.tail == uart_rx_buf.head)
+    if (uart_rx_buf.tail == uart_rx_buf.head)   /* 缓冲区满: 覆盖最早数据 */
     {
         if (++uart_rx_buf.head >= UART_BUF_SIZE)
             uart_rx_buf.head = 0;
     }
 }
 
-/* 弹出一字节 (主循环调用)，返回 1=成功, 0=空 */
+/* 弹出一字节 (主循环调用), 返回 1=成功, 0=空 */
 static unsigned char UART_BufPop(unsigned char *dat)
 {
     if (uart_rx_buf.head == uart_rx_buf.tail)
@@ -106,31 +104,28 @@ static unsigned char UART_BufPop(unsigned char *dat)
 
 /*=============================================================================
  * 语音命令队列
- * 协议解析器遇 0xA0~0xA6 时分流到此队列，供 main.c 消费。
- *=============================================================================*/
-#define VOICE_CMD_QUEUE_SIZE  4   /* 原8 → 缩至4, 省4B RAM.
-                                     用户每秒最多1~2条语音命令, 4条容量够;
-                                     命令码 A0~A6 本身7条, 队列4条足够覆盖突发。 */
+ * 协议解析器遇 0xA0~0xA6 时分流到此队列, 供 main.c 消费。
+ *===========================================================================*/
+#define VOICE_CMD_QUEUE_SIZE  4   /* 用户每秒最多 1~2 条语音命令, 4 条容量够 */
 
 static unsigned char voice_cmd_queue[VOICE_CMD_QUEUE_SIZE];
 static unsigned char voice_cmd_head = 0;  /* 读指针 */
 static unsigned char voice_cmd_tail = 0;  /* 写指针 */
 
-/* 入队一字节，满时丢弃最旧命令 */
+/* 入队一字节, 满时丢弃最旧命令 */
 static void VoiceCmd_Push(unsigned char cmd)
 {
     voice_cmd_queue[voice_cmd_tail] = cmd;
     if (++voice_cmd_tail >= VOICE_CMD_QUEUE_SIZE)
         voice_cmd_tail = 0;
-    /* 队列满时丢弃最旧命令 (正常情况下不应发生) */
-    if (voice_cmd_tail == voice_cmd_head)
+    if (voice_cmd_tail == voice_cmd_head)   /* 队列满: 丢弃最旧命令 */
     {
         if (++voice_cmd_head >= VOICE_CMD_QUEUE_SIZE)
             voice_cmd_head = 0;
     }
 }
 
-/* 出队一个语音命令，返回 0 表示队列空 */
+/* 出队一个语音命令, 返回 0 表示队列空 */
 unsigned char WIFI_GetVoiceCommand(void)
 {
     unsigned char cmd;
@@ -144,15 +139,14 @@ unsigned char WIFI_GetVoiceCommand(void)
 
 /*=============================================================================
  * UART 底层发送
- *=============================================================================*/
+ *===========================================================================*/
 
-/* 发送一字节，阻塞等待移位寄存器空 */
+/* 发送一字节, 阻塞等待移位寄存器空 */
 static void UART_SendByte(unsigned char dat)
 {
     TXREG = dat;
     while (TRMT == 0)
     {
-        /* 等待发送移位寄存器空 */
     }
 }
 
@@ -169,24 +163,22 @@ static void UART_SendBuf(const unsigned char *buf, unsigned char len)
 
 /*=============================================================================
  * UART 初始化 (9600bps @ 16MHz)
- *=============================================================================*/
+ *===========================================================================*/
 void WIFI_Init(void)
 {
-    /* RC0 = TX (输出), RC1 = RX (输入) */
+    /* RC0=TX (输出), RC1=RX (输入) */
     TRISC0 = 0;
     TRISC1 = 1;
 
-    /* Baud = Fosc / (16 * (SPBRG + 1)) → 16MHz / (16 * 104) ≈ 9615 bps (误差 0.16%) */
+    /* Baud = Fosc / (16*(SPBRG+1)) → 16MHz/(16*104) ≈ 9615 bps (误差 0.16%) */
     SPBRG = UART_SPBRG_9600_16MHZ;
 
-    /* 直接写寄存器避免位名兼容性问题:
-     * TXSTA: TXEN=1, SYNC=0, BRGH=0 → 0x20
-     * RCSTA: SPEN=1, CREN=1 → 0x90
-     */
+    /* TXSTA: TXEN=1, SYNC=0, BRGH=0 → 0x20
+       RCSTA: SPEN=1, CREN=1 → 0x90 */
     TXSTA = 0x20;
     RCSTA = 0x90;
 
-    /* RCIE=1, TXIE=0；保留 TMR2IE(bit1) 不动 */
+    /* RCIE=1, TXIE=0; 保留 TMR2IE(bit1) 不动 */
     PIE1 = (unsigned char)(PIE1 | 0x20);
     PIE1 = (unsigned char)(PIE1 & ~0x10);
 
@@ -198,15 +190,12 @@ void WIFI_Init(void)
 }
 
 /*=============================================================================
- * UART 接收 ISR：由 main.c 的中断在 RCIF 置位时调用
- *=============================================================================*/
+ * UART 接收 ISR: 由 main.c 的中断在 RCIF 置位时调用
+ *===========================================================================*/
 void WIFI_ISR_Rx(void)
 {
-    /*
-     * 错误处理:
-     *   FERR: 帧错误 → 读取丢弃，清 RCIF
-     *   OERR: 溢出错误 → 必须重置 CREN，否则后续无法接收
-     */
+    /* FERR: 帧错误 → 读取丢弃, 清 RCIF
+       OERR: 溢出错误 → 必须重置 CREN, 否则后续无法接收 */
     if (FERR)
     {
         (void)RCREG;
@@ -225,33 +214,23 @@ void WIFI_ISR_Rx(void)
 
 /*=============================================================================
  * 涂鸦协议状态机: 解析 WiFi 模组发来的帧
- *=============================================================================*/
+ *===========================================================================*/
 
-/* 前向声明 */
 static void dpInfHandle(unsigned char dpId, unsigned long dpData);
 static void alldpUpdate(void);
 
-/* 协议解析状态变量 */
 static unsigned char wifi_buf_state = 0;   /* 状态机当前状态 */
 static unsigned char wifi_buf_idx = 0;     /* 当前帧已收字节数 */
-static unsigned char wifi_checksum = 0;    /* 累加校验和 (8-bit即可, 原16-bit浪费1B) */
+static unsigned char wifi_checksum = 0;    /* 累加校验和 (8-bit) */
 static unsigned char wifi_dat_count = 0;   /* DP 数据部分已收字节数 */
-static unsigned char wifi_rx_buf[16];      /* 原20 → 缩至16, 省4B RAM.
-                                              涂鸦协议最大单帧 (DP value=4字节):
-                                              [55 AA 03 cmd lenH lenL DPid type len d0 d1 d2 d3 crc]
-                                              = 6 + 1 + 1 + 1 + 4 + 1 = 14B, 16B足够。 */
+static unsigned char wifi_rx_buf[16];      /* 当前支持的 value 帧最长 15B (含校验), 16B 足够 */
 
-/* WiFi 模组下发的命令字 */
-volatile unsigned char wifi_cmd = 0;
-/* WiFi 连接状态 (由模组上报) */
-volatile unsigned char wifi_state = 5;
-/* DP 全量上报请求标志 */
-volatile unsigned char wifi_dp_flag = 0;
+volatile unsigned char wifi_cmd = 0;       /* WiFi 模组下发的命令字 */
+volatile unsigned char wifi_state = 5;     /* WiFi 连接状态 (由模组上报) */
+volatile unsigned char wifi_dp_flag = 0;   /* DP 全量上报请求标志 */
 
-/*
- * wifi_UART_Service
- * 从环形缓冲区逐字节解析 WiFi 协议帧；遇 0xA0~0xA6 语音字节分流到语音队列。
- */
+/* wifi_UART_Service: 从环形缓冲区逐字节解析 WiFi 协议帧;
+   遇 0xA0~0xA6 语音字节分流到语音队列。 */
 static void wifi_UART_Service(void)
 {
     unsigned char dat;
@@ -272,8 +251,7 @@ static void wifi_UART_Service(void)
             }
             else if (dat >= VOICE_CMD_WAKEUP && dat <= VOICE_CMD_FILTER)
             {
-                /* 语音命令: 分流到语音队列 */
-                VoiceCmd_Push(dat);
+                VoiceCmd_Push(dat);          /* 语音命令: 分流到语音队列 */
                 wifi_buf_idx = 0;
             }
             /* 其他字节静默丢弃 */
@@ -288,8 +266,7 @@ static void wifi_UART_Service(void)
             }
             else if (dat == 0x55)
             {
-                /* 重新开始 */
-                wifi_rx_buf[0] = 0x55;
+                wifi_rx_buf[0] = 0x55;       /* 重新开始 */
                 wifi_checksum = dat;
                 wifi_buf_idx = 1;
             }
@@ -300,7 +277,7 @@ static void wifi_UART_Service(void)
             }
             break;
 
-        case 2:  /* 检查版本号 (应为 0x03) */
+        case 2:  /* 检查版本号 (接收允许 0x00/0x03, 上报使用 0x03) */
             if (dat == 0x00 || dat == 0x03)
             {
                 wifi_buf_state = 3;
@@ -325,8 +302,7 @@ static void wifi_UART_Service(void)
             }
             else
             {
-                /* 非法命令, 丢弃整帧 */
-                wifi_buf_state = 0;
+                wifi_buf_state = 0;          /* 非法命令, 丢弃整帧 */
                 wifi_buf_idx = 0;
             }
             break;
@@ -334,14 +310,13 @@ static void wifi_UART_Service(void)
         case 4:  /* 数据长度 (高位 + 低位) */
             if (wifi_buf_idx == 5)
             {
-                /* 数据长度低字节 */
                 if (dat == 0x00 || dat == 0x01)
                 {
-                    wifi_buf_state = 6;  /* 0x03 类命令: 仅 1 字节状态 */
+                    wifi_buf_state = 6;      /* 0x03 类命令: 仅 1 字节状态 */
                 }
                 else
                 {
-                    wifi_buf_state = 5;  /* 0x06/0x07 命令: 含 DP 数据 */
+                    wifi_buf_state = 5;      /* 0x06/0x07 命令: 含 DP 数据 */
                 }
                 wifi_checksum += dat;
                 wifi_buf_idx++;
@@ -362,19 +337,14 @@ static void wifi_UART_Service(void)
             }
             else
             {
-                /* 收满，校验 */
                 wifi_checksum = (unsigned char)(wifi_checksum % 256);
 
-                if (wifi_checksum == dat)
+                if (wifi_checksum == dat)   /* 校验通过 */
                 {
-                    /*
-                     * 校验通过。帧结构:
-                     * [0]=55 [1]=AA [2]=ver [3]=cmd [4]=lenH [5]=lenL
-                     * [6]=dpid [7]=dptype [8]=dpLenH [9]=dpLenL [10..]=dpData
-                     */
+                    /* 帧结构: [0]=55 [1]=AA [2]=ver [3]=cmd [4]=lenH [5]=lenL
+                               [6]=dpid [7]=dptype [8]=dpLenH [9]=dpLenL [10..]=dpData */
                     if (wifi_rx_buf[6] != 0xFF)  /* 非广播 DP */
                     {
-                        /* 按数据长度组装 dp_data */
                         if (wifi_rx_buf[9] == 4)
                         {
                             /* value 类型: 4 字节大端 */
@@ -389,14 +359,10 @@ static void wifi_UART_Service(void)
                             dp_data = wifi_rx_buf[10];
                         }
 
-                        /* 调用 DP 下发处理 */
                         dpInfHandle(wifi_rx_buf[6], dp_data);
                     }
 
-                    /*
-                     * 回复 DP 下发应答:
-                     * 版本 0x00→0x03 (+3), 命令 0x06→0x07 (+1), 校验和共 +4
-                     */
+                    /* 回复 DP 下发应答: 版本 +3, 命令 +1, 校验和共 +4 */
                     wifi_rx_buf[2] = 0x03;
                     wifi_rx_buf[3] = 0x07;
                     wifi_rx_buf[wifi_buf_idx] = (unsigned char)(dat + 4);
@@ -404,20 +370,17 @@ static void wifi_UART_Service(void)
                                  (unsigned char)(7 + wifi_rx_buf[5]));
                 }
 
-                /* 复位状态机 */
-                wifi_checksum = 0;
+                wifi_checksum = 0;           /* 复位状态机 */
                 wifi_buf_idx = 0;
                 wifi_buf_state = 0;
             }
             break;
 
         case 6:  /* 简短响应帧 (命令 0x00~0x05, 0x08) */
-            /* 状态数据已收完 (通常只有 0~1 字节) */
             wifi_cmd = wifi_rx_buf[3];
             wifi_state = wifi_rx_buf[6];
 
-            /* 复位状态机 */
-            wifi_checksum = 0;
+            wifi_checksum = 0;               /* 复位状态机 */
             wifi_buf_idx = 0;
             wifi_buf_state = 0;
             break;
@@ -432,25 +395,19 @@ static void wifi_UART_Service(void)
 
 /*=============================================================================
  * 涂鸦协议命令处理
- *=============================================================================*/
+ *===========================================================================*/
 
-/* 配网模式: 0=SmartConfig, 1=AP */
-static unsigned char wifi_pair_mode = 0;
+static unsigned char wifi_pair_mode = 0;    /* 配网模式: 0=SmartConfig, 1=AP */
 
-/*
- * Settuyawifi
- * 按 wifi_cmd 做相应应答。由 WIFI_Process() 周期性调用。
- */
+/* Settuyawifi: 按 wifi_cmd 做相应应答。由 WIFI_Process() 周期性调用。 */
 static void Settuyawifi(void)
 {
     switch (wifi_cmd)
     {
     case 0x00:
     {
-        /*
-         * 模组查询心跳: 第 1 次回复 0x00, 后续回复 0x01.
-         * 若不区分, 模块可能无法进入正常工作状态.
-         */
+        /* 模组查询心跳: 第 1 次回复 0x00, 后续回复 0x01。
+           若不区分, 模块可能无法进入正常工作状态。 */
         static unsigned char heartbeat_first = 1;
 
         if (heartbeat_first)
@@ -531,13 +488,10 @@ static void Settuyawifi(void)
 
 /*=============================================================================
  * DP 上报: 构建帧并发送
- *=============================================================================*/
+ *===========================================================================*/
 
-/*
- * mcudpUpdate
- * 构建 DP 上报帧并发送。
- * bool/enum: dpLen=0x01, 帧总长 12；value: dpLen=0x04, 帧总长 15。
- */
+/* mcudpUpdate: 构建 DP 上报帧并发送。
+   bool/enum: dpLen=0x01, 帧总长 12; value: dpLen=0x04, 帧总长 15。 */
 static void mcudpUpdate(unsigned char dpid,
                         unsigned char dptype,
                         unsigned long data)
@@ -555,10 +509,10 @@ static void mcudpUpdate(unsigned char dpid,
 
     if (dptype == DP_TYPE_BOOL || dptype == DP_TYPE_ENUM)
     {
-        tx_buf[5] = 0x05;    /* 数据长度 = 5 (dpid + type + lenH + lenL + 1字节数据) */
+        tx_buf[5] = 0x05;    /* 数据长度 = 5 (dpid+type+lenH+lenL+1字节数据) */
         tx_buf[6] = dpid;
         tx_buf[7] = dptype;
-        tx_buf[8] = 0x00;    /* dp 数据长度高字节 */
+        tx_buf[8] = 0x00;
         tx_buf[9] = 0x01;    /* dp 数据长度低字节 (1 字节) */
         tx_buf[10] = (unsigned char)data;
 
@@ -571,10 +525,10 @@ static void mcudpUpdate(unsigned char dpid,
     }
     else if (dptype == DP_TYPE_VALUE)
     {
-        tx_buf[5] = 0x08;    /* 数据长度 = 8 (dpid + type + lenH + lenL + 4字节数据) */
+        tx_buf[5] = 0x08;    /* 数据长度 = 8 (dpid+type+lenH+lenL+4字节数据) */
         tx_buf[6] = dpid;
         tx_buf[7] = dptype;
-        tx_buf[8] = 0x00;    /* dp 数据长度高字节 */
+        tx_buf[8] = 0x00;
         tx_buf[9] = 0x04;    /* dp 数据长度低字节 (4 字节) */
         tx_buf[10] = (unsigned char)(data >> 24);
         tx_buf[11] = (unsigned char)(data >> 16);
@@ -590,8 +544,7 @@ static void mcudpUpdate(unsigned char dpid,
     }
     else
     {
-        /* 不支持的类型, 暂不处理 */
-        return;
+        return;              /* 不支持的类型 */
     }
 
     UART_SendBuf(tx_buf, tx_len);
@@ -599,7 +552,7 @@ static void mcudpUpdate(unsigned char dpid,
 
 /*=============================================================================
  * 全部 DP 分次上报 (避免一次发送过多数据阻塞 UART)
- *=============================================================================*/
+ *===========================================================================*/
 
 /* DP 状态变量 (由 dpInfHandle 更新 / main.c 读取) */
 volatile unsigned char wifi_dp_changed = 0;  /* 云端下发变更标志 */
@@ -611,10 +564,8 @@ volatile unsigned char dp_brightness  = 2;  /* DP 105: 亮度, 默认 2 (高); 3
 
 volatile unsigned int  dp_pm25         = 0;
 volatile unsigned char dp_filter_usage = 0;
-/*
- * alldpUpdate
- * 分次上报全部 DP (每次调用只报一个，靠主循环周期调用完成全量上报)。
- */
+
+/* alldpUpdate: 分次上报全部 DP (每次调用只报一个, 靠主循环周期调用完成全量上报) */
 static void alldpUpdate(void)
 {
     static unsigned char dp_index = 0;
@@ -651,8 +602,7 @@ static void alldpUpdate(void)
         mcudpUpdate(DPID_FILTER_USAGE, DP_TYPE_VALUE, dp_filter_usage);
         break;
     case 8:
-        /* 上报完毕 */
-        wifi_dp_flag = 0;
+        wifi_dp_flag = 0;     /* 上报完毕 */
         dp_index = 0;
         break;
     default:
@@ -664,9 +614,8 @@ static void alldpUpdate(void)
 
 /*=============================================================================
  * DP 下发处理: 云 → 本地
- * WiFi 模组下发 DP 时调用，传入 dpId 与解析后的 dpData。
- * 用户须按自身功能点在此添加/修改处理逻辑。
- *=============================================================================*/
+ * WiFi 模组下发 DP 时调用, 传入 dpId 与解析后的 dpData。
+ *===========================================================================*/
 static void dpInfHandle(unsigned char dpId, unsigned long dpData)
 {
     switch (dpId)
@@ -693,7 +642,7 @@ static void dpInfHandle(unsigned char dpId, unsigned long dpData)
         wifi_dp_changed = 1;
         break;
 
-    case DPID_BRIGHTNESS:                    /* 105: 亮度, enum 0~3 (字节: 0=低,1=中,2=高,3=熄屏) */
+    case DPID_BRIGHTNESS:                    /* 105: 亮度, enum 0~3 (0=低,1=中,2=高,3=熄屏) */
         if (dpData <= 3)
             dp_brightness = (unsigned char)dpData;
         wifi_dp_changed = 1;
@@ -706,37 +655,32 @@ static void dpInfHandle(unsigned char dpId, unsigned long dpData)
 
 /*=============================================================================
  * 单个 DP 上报 — 供 main.c 在本地状态变化时调用
- *=============================================================================*/
+ *===========================================================================*/
 
-/* 上报开关 DP 101 */
 void WIFI_ReportPower(unsigned char on)
 {
     dp_power = (on != 0) ? 1 : 0;
     mcudpUpdate(DPID_POWER, DP_TYPE_BOOL, dp_power);
 }
 
-/* 上报定时 DP 102 (小时数) */
 void WIFI_ReportTimer(unsigned char hours)
 {
     dp_timer = hours;
     mcudpUpdate(DPID_TIMER, DP_TYPE_VALUE, dp_timer);
 }
 
-/* 上报风速 DP 103 (档位) */
 void WIFI_ReportFanSpeed(unsigned char gear)
 {
     dp_fan_speed = gear;
     mcudpUpdate(DPID_FAN_SPEED, DP_TYPE_ENUM, dp_fan_speed);
 }
 
-/* 上报滤网指示 DP 104 */
 void WIFI_ReportIndicator(unsigned char on)
 {
     dp_indicator = (on != 0) ? 1 : 0;
     mcudpUpdate(DPID_INDICATOR, DP_TYPE_BOOL, dp_indicator);
 }
 
-/* 上报显示屏亮度 DP 105 */
 void WIFI_ReportBrightness(unsigned char level)
 {
     dp_brightness = level;
@@ -773,7 +717,7 @@ void WIFI_ReportFilterUsage(unsigned char usage)
     mcudpUpdate(DPID_FILTER_USAGE, DP_TYPE_VALUE, dp_filter_usage);
 }
 
-/* 触发全量 DP 上报 (置标志，由 alldpUpdate 分次完成) */
+/* 触发全量 DP 上报 (置标志, 由 alldpUpdate 分次完成) */
 void WIFI_ReportAll(void)
 {
     wifi_dp_flag = 1;
@@ -781,38 +725,25 @@ void WIFI_ReportAll(void)
 
 /*=============================================================================
  * 主处理入口
- *=============================================================================*/
+ *===========================================================================*/
 
-/*
- * WIFI_Process
- * 主循环每 ~20ms 调用一次：解析 WiFi 协议帧 + 响应涂鸦命令。
- */
+/* WIFI_Process: 由主循环周期调用, 解析 WiFi 协议帧并响应涂鸦命令 */
 void WIFI_Process(void)
 {
     wifi_UART_Service();
     Settuyawifi();
 }
 
-/*
- * WIFI_Reset
- * 复位 WiFi 模组进入 SmartConfig 配网模式 (按键长按等触发，APP 配网)。
- */
+/* WIFI_Reset: 复位 WiFi 模组进入 SmartConfig 配网模式 */
 void WIFI_Reset(void)
 {
-    wifi_pair_mode = 0;  /* SmartConfig */
+    wifi_pair_mode = 0;
     UART_SendBuf(ResetWifi, 7);
 }
 
-/*
- * WIFI_ResetAP
- * 复位 WiFi 模组进入 AP 配网模式 (设备开 AP 热点，手机连接后 APP 配网)。
- */
+/* WIFI_ResetAP: 复位 WiFi 模组进入 AP 配网模式 */
 void WIFI_ResetAP(void)
 {
-    wifi_pair_mode = 1;  /* AP 模式 */
+    wifi_pair_mode = 1;
     UART_SendBuf(ResetWifi, 7);
 }
-
-/*=============================================================================
- * end
- *=============================================================================*/

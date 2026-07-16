@@ -6,7 +6,7 @@ static volatile unsigned char fan_pwm_tick;
 static volatile unsigned char fan_pwm_duty_ticks;
 static volatile unsigned char fan_pwm_enabled;
 
-/* 停止 PWM 并关闭风扇电源。 */
+/* 停止 PWM 并关闭风扇电源 */
 void Fan_Stop(void)
 {
     fan_pwm_enabled = (unsigned char)0x00;
@@ -15,7 +15,7 @@ void Fan_Stop(void)
     FAN_PWM = 0;
 }
 
-/* 根据电源状态和风速档位更新风扇电源及 PWM 占空比。 */
+/* 按电源状态与风速档位更新风扇电源及 PWM 占空比 */
 void Fan_UpdateOutput(unsigned char power_on, unsigned char speed_level)
 {
     if ((power_on != (unsigned char)0x00)
@@ -44,7 +44,7 @@ void Fan_UpdateOutput(unsigned char power_on, unsigned char speed_level)
     }
 }
 
-/* Timer2 每次中断执行一次 PWM tick。 */
+/* Timer2 每次中断执行一次 PWM tick: 计数 < duty 则置高, 否则拉低; 计满周期清零 */
 void Fan_Timer2Tick(void)
 {
     if (fan_pwm_enabled != (unsigned char)0x00)

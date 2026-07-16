@@ -2,22 +2,18 @@
 #include "board.h"
 #include "gas_sensor.h"
 
-/*
- * TP-401W 异味传感器驱动实现
- *
- * =======================================================================
- * 【崩溃根因修复保留】
- * ADC 采样与 TMR2 触摸扫描 ISR 的并发冲突修复 (PEIE 原子保护 + 超时):
- *   所有 ADC 操作在关 PEIE 窗口内完成, 防止 ISR 改写 ADCON0 导致死循环.
- * =======================================================================
- * 【算法适配自 air1.6.1 已验证方案】
- *   1. ADC 左对齐读取 (ADFM=0): (ADRESH<<4)|(ADRESL>>4) → 0~4092
- *   2. 6 次采样去最小/最大后 4 次平均
- *   3. 一阶 IIR 低通滤波 (α=64)
- *   4. 开短路检测: 连续 8 次确认防误判
- *   5. 非线性分段映射: MapToDisplay
- * =======================================================================
- */
+/* H3:SMELL 外设模拟输入驱动实现。
+   当前工程按 TP-401W 行为模型实现，外接模块型号和 RB1/CND 的实际功能仍需实机确认。
+
+   ADC 采样与 TMR2 触摸扫描 ISR 的并发保护 (PEIE 原子保护 + 超时):
+   所有 ADC 操作在关 PEIE 窗口内完成, 防止 ISR 改写 ADCON0 导致死循环.
+
+   算法流程:
+   1. ADC 12-bit 左对齐读取 (ADFM=0): (ADRESH<<4)|(ADRESL>>4) → 原始范围 0~4095, 当前软件有效范围按 0~4092 处理
+   2. 6 次采样去最小/最大后 4 次平均
+   3. 一阶 IIR 低通滤波 (α=64)
+   4. 开短路检测: 连续 8 次确认防误判
+   5. 分段线性映射: MapToDisplay */
 
 /* ---------- 位掩码 ---------- */
 #define ADC_GO_MASK     ((unsigned char)0x02)   /* ADCON0.1 GO/DONE */
@@ -36,9 +32,7 @@
 /* ---------- 开短路防抖计数 (连续次数) ---------- */
 #define FAULT_DEBOUNCE_CNT  ((unsigned char)8)
 
-/*=============================================================================
- * 内部: 原子性写 CHS + 置 GO 启动转换 (调用者必须已关 PEIE)
- *============================================================================*/
+/* 内部: 原子性写 CHS + 置 GO 启动转换 (调用者必须已关 PEIE) */
 static void Gas_StartConvert_Locked(unsigned char chan)
 {
     ADCON0 = (unsigned char)((ADCON0 & (unsigned char)0xC3)
@@ -46,10 +40,8 @@ static void Gas_StartConvert_Locked(unsigned char chan)
     ADCON0 = (unsigned char)(ADCON0 | ADC_GO_MASK);
 }
 
-/*=============================================================================
- * 内部: 等待 GO/DONE 硬件清零, 带超时 (调用者必须已关 PEIE)
- * 返回: 0 = 成功, 非 0 = 超时
- *============================================================================*/
+/* 内部: 等待 GO/DONE 硬件清零, 带超时 (调用者必须已关 PEIE)。
+   返回 0=成功, 非 0=超时 */
 static unsigned char Gas_WaitDone_Timeout(void)
 {
     unsigned int cnt;
@@ -61,10 +53,7 @@ static unsigned char Gas_WaitDone_Timeout(void)
     return (unsigned char)0x01;
 }
 
-/*=============================================================================
- * Gas_Init
- * ADC 初始化: Fosc/8, 左对齐 (ADFM=0), Vref=Vdd, 开 AN13
- *============================================================================*/
+/* Gas_Init: ADC 初始化 (Fosc/8, 左对齐 ADFM=0, Vref=Vdd, 开 AN13) */
 void Gas_Init(void)
 {
     unsigned char old_peie;
@@ -74,9 +63,9 @@ void Gas_Init(void)
     PEIE = 0;
 
     /* ADCON0: 时钟=Fosc/8 (01), 通道暂 AN0, GO=0, ADON=1
-     * ADCON1: 左对齐 (ADFM=0), Vref=Vdd */
-    ADCON0 = (unsigned char)0x41;       /* 0100_0001 */
-    ADCON1 = (unsigned char)0x00;       /* 0000_0000: ADFM=0 */
+       ADCON1: 左对齐 (ADFM=0), Vref=Vdd */
+    ADCON0 = (unsigned char)0x41;
+    ADCON1 = (unsigned char)0x00;
 
     ADC_TAD_STABLE();
 
@@ -96,11 +85,8 @@ void Gas_Init(void)
     PEIE = (old_peie != (unsigned char)0) ? (unsigned char)1 : (unsigned char)0;
 }
 
-/*=============================================================================
- * 内部: 单次 ADC 读取 (左对齐, 返回 0~4092)
- * 调用者必须已关 PEIE
- * 返回: 0~4092 (正常) 或 0xFFFF (超时)
- *============================================================================*/
+/* 内部: 单次 ADC 读取 (左对齐, 原始返回 0~4095), 调用者必须已关 PEIE。
+   返回 0~4095 (正常) 或 0xFFFF (超时); 上层按当前工程有效范围筛选 */
 static unsigned int Gas_ReadOnce_Locked(void)
 {
     unsigned char adres_h;
@@ -114,9 +100,9 @@ static unsigned int Gas_ReadOnce_Locked(void)
         return (unsigned int)0xFFFF;
     }
 
-    /* 左对齐: ADRESH[7:0] = ADC[9:2], ADRESL[7:6] = ADC[1:0]
-       组合: (ADRESH << 4) | (ADRESL >> 4) → 等效 ADC × 4 = 0~4092
-       必须先读 ADRESH 再读 ADRESL, 以锁定 ADC 结果寄存器对 */
+    /* ADFM=0 的 12-bit 左对齐结果:
+       ADRESH[7:0]=ADC[11:4], ADRESL[7:4]=ADC[3:0]
+       组合 (ADRESH<<4)|(ADRESL>>4) → 0~4095; 必须先读 ADRESH 再读 ADRESL 以锁定结果寄存器对 */
     adres_h = (unsigned char)ADRESH;
     adres_l = (unsigned char)ADRESL;
     ad_val  = ((unsigned int)adres_h << 4) | ((unsigned int)adres_l >> 4);
@@ -124,13 +110,9 @@ static unsigned int Gas_ReadOnce_Locked(void)
     return ad_val;
 }
 
-/*=============================================================================
- * 内部: 线性标定映射
- *
- * 输入为滤波后的原始浓度值。低于 GAS_PM25_DISPLAY_ZERO 显示 0，
- * 达到 GAS_PM25_DISPLAY_FULL 显示 500，中间范围按比例映射。
- * 直接使用原始值，避免 /20 量化、二次曲线和额外放大导致的跳变与过早封顶。
- *============================================================================*/
+/* 内部: 线性标定映射。
+   输入滤波后原始浓度值, 低于 ZERO 显示 0, 达到 FULL 显示 500, 中间按比例映射。
+   直接使用原始值, 避免 /20 量化、二次曲线和额外放大导致的跳变与过早封顶。 */
 static unsigned int MapToDisplay(unsigned int value)
 {
     unsigned int span;
@@ -147,26 +129,16 @@ static unsigned int MapToDisplay(unsigned int value)
     );
 }
 
-/*=============================================================================
- * 内部状态变量 (跨调用保持)
- *============================================================================*/
+/* 内部状态变量 (跨调用保持) */
 static unsigned char  open_delay   = 0;  /* 开路防抖计数 */
 static unsigned char  short_delay  = 0;  /* 短路防抖计数 */
 static unsigned int   filtered_val = 0;  /* 一阶低通滤波输出 (raw_conc ×10) */
 
-/*=============================================================================
- * Gas_ReadPm25 (主接口)
- *
- * 流程:
- *   1. 检查传感器供电
- *   2. PEIE 保护下: 6 次采样, 去最小/最大, 4 次平均
- *   3. 开短路防抖判定
- *   4. 电压换算 (mV) + 原始浓度 (×10)
- *   5. 一阶 IIR 低通滤波
- *   6. 非线性映射 → 返回 0~500
- *
- * 返回: 0~500 (有效值) 或 GAS_PM25_INVALID
- *============================================================================*/
+/* Gas_ReadPm25 (主接口)。
+   流程: 1.检查供电 2.PEIE 保护下 6 次采样去极值平均
+         3.开短路防抖判定 4.电压换算(mV)+原始浓度(×10)
+         5.一阶 IIR 低通 6.分段线性映射 → 0~500
+   返回 0~500 (有效值) 或 GAS_PM25_INVALID */
 unsigned int Gas_ReadPm25(void)
 {
     unsigned char old_peie;
@@ -197,16 +169,13 @@ unsigned int Gas_ReadPm25(void)
         ad_val = Gas_ReadOnce_Locked();
         if (ad_val == (unsigned int)0xFFFF)
         {
-            /* 单次超时: 跳过此帧 */
-            continue;
+            continue;              /* 单次超时: 跳过此帧 */
         }
         if (ad_val > (unsigned int)4092)
         {
-            /* 超范围保护 */
-            continue;
+            continue;              /* 超范围保护 */
         }
 
-        /* 更新最小/最大/累加 */
         if (valid_cnt == (unsigned char)0)
         {
             ad_max = ad_val;
@@ -224,13 +193,13 @@ unsigned int Gas_ReadPm25(void)
     PEIE = (old_peie != (unsigned char)0) ? (unsigned char)1 : (unsigned char)0;
     /* ========== PEIE 保护: 结束 ========== */
 
-    /* 有效采样不足 4 次 (至少需要 4+2=6 次, 去极值后剩 4) */
+    /* 有效采样不足 6 次 (去极值后不足 4 次) */
     if (valid_cnt < GAS_ADC_SAMPLE_CNT)
         return GAS_PM25_INVALID;
 
     /* 去最小/最大, 剩余 4 次平均 */
     ad_sum = ad_sum - ad_max - ad_min;
-    ad_val = ad_sum / 4U;   /* 0~4092 */
+    ad_val = ad_sum / 4U;          /* 当前软件有效范围 0~4092 */
 
     /* 3) 开短路防抖判定 (连续 8 次确认) */
     if (ad_val <= GAS_ADC_OPEN)
@@ -266,25 +235,21 @@ unsigned int Gas_ReadPm25(void)
     }
     else
     {
-        /* 正常范围: 清防抖计数 */
-        open_delay  = (unsigned char)0;
+        open_delay  = (unsigned char)0;   /* 正常范围: 清防抖计数 */
         short_delay = (unsigned char)0;
     }
 
-    /* 4) 原始浓度 (×10): 公式同 air1.6.1
-       raw_conc = ad_val * 5000 / 4096 * 5 / 10, 再饱和到 999 */
+    /* 4) 原始浓度 (×10): raw_conc = ad_val*5000/4096*5/10, 饱和到 999 */
     raw_conc = (unsigned int)(
         (unsigned long)ad_val * 5000UL / 4096UL * 5UL / 10UL
     );
     if (raw_conc > (unsigned int)999)
         raw_conc = (unsigned int)999;
 
-    /* 5) 一阶低通 IIR 滤波
-       filtered_val = (α × raw_conc + (256-α) × filtered_val) >> 8 */
+    /* 5) 一阶低通 IIR: filtered_val = (α×raw + (256-α)×filtered) >> 8 */
     if (filtered_val == (unsigned int)0)
     {
-        /* 首次有效值: 直接赋值, 跳过滤波 */
-        filtered_val = raw_conc;
+        filtered_val = raw_conc;          /* 首次有效值: 直接赋值, 跳过滤波 */
     }
     else
     {
@@ -296,13 +261,11 @@ unsigned int Gas_ReadPm25(void)
     if (filtered_val > (unsigned int)999)
         filtered_val = (unsigned int)999;
 
-    /* 6) 直接线性标定映射到 0~500。 */
+    /* 6) 线性标定映射到 0~500 */
     return MapToDisplay(filtered_val);
 }
 
-/*=============================================================================
- * 预热状态
- *============================================================================*/
+/* ---------- 预热状态 ---------- */
 static unsigned char warmup_counter = (unsigned char)0;
 
 void Gas_StartWarmup(void)
@@ -326,9 +289,7 @@ void Gas_TickWarmupSecond(void)
         warmup_counter--;
 }
 
-/*=============================================================================
- * Gas_PowerOn / Gas_PowerOff
- *============================================================================*/
+/* ---------- H3 外设控制 (当前固件按 GAS_VCC=0 开启, =1 关闭) ---------- */
 void Gas_PowerOn(void)
 {
     GAS_VCC = 0;
@@ -337,5 +298,5 @@ void Gas_PowerOn(void)
 void Gas_PowerOff(void)
 {
     GAS_VCC = 1;
-    warmup_counter = (unsigned char)0;  /* 关机复位预热状态，防止 4e 段在关机时继续写显示 */
+    warmup_counter = (unsigned char)0;  /* 关机复位预热, 防 4e 段在关机时继续写显示 */
 }
