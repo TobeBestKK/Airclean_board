@@ -4,11 +4,13 @@
 #include "timer.h"
 #include "tm1628.h"
 #include "fan.h"
+#include "tuya_protocol.h"
 
 static unsigned char self_check_stage;
 static unsigned char self_check_elapsed_sec;
 static unsigned int  self_check_hold_ticks;
 static unsigned char self_check_trigger_armed;
+static unsigned char self_check_initial_release_seen;
 static unsigned char self_check_key_seen;
 static unsigned char self_check_key_count;
 static unsigned char self_check_wait_key_release;
@@ -18,7 +20,9 @@ void SelfCheck_Init(void)
     self_check_stage = SELF_CHECK_STAGE_IDLE;
     self_check_elapsed_sec = (unsigned char)0;
     self_check_hold_ticks = (unsigned int)0;
-    self_check_trigger_armed = (unsigned char)0x01;
+    /* 上电后先等 K2 出现一次释放，避开触摸库尚未建立基线时的假按下。 */
+    self_check_trigger_armed = (unsigned char)0x00;
+    self_check_initial_release_seen = (unsigned char)0x00;
     self_check_key_seen = (unsigned char)0;
     self_check_key_count = (unsigned char)0;
     self_check_wait_key_release = (unsigned char)0;
@@ -41,6 +45,18 @@ unsigned char SelfCheck_Process(
 
     if (self_check_stage == SELF_CHECK_STAGE_IDLE)
     {
+        if (self_check_initial_release_seen == (unsigned char)0x00)
+        {
+            if ((key_now & KEY_MASK_K2) == (unsigned char)0x00)
+            {
+                self_check_initial_release_seen = (unsigned char)0x01;
+                self_check_trigger_armed = (unsigned char)0x01;
+                self_check_hold_ticks = (unsigned int)0;
+            }
+
+            return SELF_CHECK_EVENT_NONE;
+        }
+
         if (self_check_trigger_armed == (unsigned char)0x00)
         {
             if ((key_now & KEY_MASK_K2) == (unsigned char)0x00)
@@ -68,6 +84,8 @@ unsigned char SelfCheck_Process(
                 self_check_hold_ticks = (unsigned int)0;
 
                 Fan_Stop();
+                /* 自检必须按最亮状态检查数码管和 LED；显示帧已改为连续写入。 */
+                TM1628_SetBrightness((unsigned char)0x02);
                 Timer0_ResetTick();
                 TM1628_AllOn();
 
@@ -202,6 +220,7 @@ unsigned char SelfCheck_Process(
         {
             Fan_Stop();
             TM1628_AllOff();
+            TM1628_SetBrightness(dp_brightness);
             Timer0_ResetTick();
 
             self_check_stage = SELF_CHECK_STAGE_IDLE;

@@ -100,7 +100,11 @@ void TM1628_WriteByteToAddr(unsigned char addr, unsigned char dat)
         tm1628_ram[addr] = dat;
     }
 
-    TM1628_WriteCmd((unsigned char)0x44);              /* 固定地址写模式 */
+    /* 固定地址写模式。这里直接展开 0x44 事务，避免在显示更新路径
+       再叠加一层函数调用，给 CMS79F723 的硬件栈留出余量。 */
+    TM1628_Start();
+    TM1628_WriteByte((unsigned char)0x44);
+    TM1628_Stop();
     cmd = (unsigned char)((unsigned char)0xC0 + addr); /* 0xC0+addr: 设置 RAM 地址 */
 
     TM1628_Start();
@@ -109,15 +113,37 @@ void TM1628_WriteByteToAddr(unsigned char addr, unsigned char dat)
     TM1628_Stop();
 }
 
-/* 清屏: 14 个地址全部写 0 */
+/* 以一次自动地址递增事务写完整 14-byte 显示帧。 */
+static void TM1628_WriteRamFrame(void)
+{
+    unsigned char i;
+
+    /* 直接发送 0x40，避免完整帧刷新再叠加一层命令函数调用。 */
+    TM1628_Start();
+    TM1628_WriteByte((unsigned char)0x40);
+    TM1628_Stop();
+    TM1628_Start();
+    TM1628_WriteByte((unsigned char)0xC0);
+
+    for (i = 0; i < 14; i++)
+    {
+        TM1628_WriteByte(tm1628_ram[i]);
+    }
+
+    TM1628_Stop();
+}
+
+/* 清屏: 14 个地址一次性写 0 */
 void TM1628_Clear(void)
 {
     unsigned char i;
 
     for (i = 0; i < 14; i++)
     {
-        TM1628_WriteByteToAddr(i, (unsigned char)0x00);
+        tm1628_ram[i] = (unsigned char)0x00;
     }
+
+    TM1628_WriteRamFrame();
 }
 
 /* 全灭 (Clear 别名, 便于 main.c 区分语义) */
@@ -428,43 +454,36 @@ void TM1628_SetFilterUsageDisplay(unsigned char value)
     TM1628_SetDigitByGrid((unsigned char)5, ones,     (unsigned char)0x01);
 }
 
-/* 把指定 Grid 的所有段位点亮 (段码全 1) */
-static void TM1628_SetDigitAllOnByGrid(unsigned char grid)
-{
-    unsigned char low_addr;
-    unsigned char high_addr;
-    unsigned char dat;
-
-    low_addr = (unsigned char)((grid - (unsigned char)1) << 1);
-    high_addr = (unsigned char)(low_addr + (unsigned char)1);
-
-    dat = (unsigned char)(tm1628_ram[low_addr] | TM1628_DIGIT_SEG_LOW_MASK);
-    TM1628_WriteByteToAddr(low_addr, dat);
-
-    dat = (unsigned char)(tm1628_ram[high_addr] | TM1628_DIGIT_SEG_HIGH_MASK);
-    TM1628_WriteByteToAddr(high_addr, dat);
-}
-
 /* 全部 6 位数码管所有段位点亮 (测试用) */
 void TM1628_DigitsAllOn(void)
 {
-    TM1628_SetDigitAllOnByGrid((unsigned char)7);
-    TM1628_SetDigitAllOnByGrid((unsigned char)6);
-    TM1628_SetDigitAllOnByGrid((unsigned char)5);
-    TM1628_SetDigitAllOnByGrid((unsigned char)4);
-    TM1628_SetDigitAllOnByGrid((unsigned char)3);
-    TM1628_SetDigitAllOnByGrid((unsigned char)2);
+    unsigned char grid;
+    unsigned char low_addr;
+
+    for (grid = 2; grid <= 7; grid++)
+    {
+        low_addr = (unsigned char)((grid - (unsigned char)1) << 1);
+        tm1628_ram[low_addr] =
+            (unsigned char)(tm1628_ram[low_addr] | TM1628_DIGIT_SEG_LOW_MASK);
+        tm1628_ram[(unsigned char)(low_addr + (unsigned char)1)] =
+            (unsigned char)(tm1628_ram[(unsigned char)(low_addr + (unsigned char)1)]
+                | TM1628_DIGIT_SEG_HIGH_MASK);
+    }
+
+    TM1628_WriteRamFrame();
 }
 
-/* 全亮测试: 14 个地址全写 0xFF, 验证接线与通信 */
+/* 全亮测试: 14 个地址一次性写 0xFF, 验证接线与通信 */
 void TM1628_AllOn(void)
 {
     unsigned char i;
 
     for (i = 0; i < 14; i++)
     {
-        TM1628_WriteByteToAddr(i, (unsigned char)0xFF);
+        tm1628_ram[i] = (unsigned char)0xFF;
     }
+
+    TM1628_WriteRamFrame();
 }
 
 /* 设置显示屏亮度。level 0=低, 1=中, 2=高, 3=省电熄屏。
