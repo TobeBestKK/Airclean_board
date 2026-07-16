@@ -700,6 +700,121 @@ void main(void)
                             }
                             break;
 
+                        /* 定时减一小时 (仅在开机且当前有定时任务时生效) */
+                        case VOICE_CMD_TIMER_DOWN:
+                            if (((led_state & LED_MASK_3) != (unsigned char)0x00)
+                                && (timer_hours != (unsigned char)0x00))
+                            {
+                                timer_hours--;
+                                timer_seconds = (unsigned int)0;
+                                timer_k1_idle_sec = (unsigned char)0;
+                                timer_led1_blink  = (unsigned char)0;
+
+                                if (timer_hours == (unsigned char)0x00)
+                                {
+                                    led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_1));
+                                    TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x00);
+                                }
+                                else
+                                {
+                                    led_state = (unsigned char)(led_state | LED_MASK_1);
+                                    TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x01);
+                                }
+
+                                WIFI_ReportTimer(timer_hours);
+                            }
+                            break;
+
+                        /* 固定定时 1~24 小时 (仅在开机时生效) */
+                        case VOICE_CMD_TIME_1:
+                        case VOICE_CMD_TIME_2:
+                        case VOICE_CMD_TIME_3:
+                        case VOICE_CMD_TIME_4:
+                        case VOICE_CMD_TIME_5:
+                        case VOICE_CMD_TIME_6:
+                        case VOICE_CMD_TIME_7:
+                        case VOICE_CMD_TIME_8:
+                        case VOICE_CMD_TIME_9:
+                        case VOICE_CMD_TIME_10:
+                        case VOICE_CMD_TIME_11:
+                        case VOICE_CMD_TIME_12:
+                        case VOICE_CMD_TIME_13:
+                        case VOICE_CMD_TIME_14:
+                        case VOICE_CMD_TIME_15:
+                        case VOICE_CMD_TIME_16:
+                        case VOICE_CMD_TIME_17:
+                        case VOICE_CMD_TIME_18:
+                        case VOICE_CMD_TIME_19:
+                        case VOICE_CMD_TIME_20:
+                        case VOICE_CMD_TIME_21:
+                        case VOICE_CMD_TIME_22:
+                        case VOICE_CMD_TIME_23:
+                        case VOICE_CMD_TIME_24:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                if (voice_command <= VOICE_CMD_TIME_2)
+                                {
+                                    timer_hours = (unsigned char)(voice_command - (unsigned char)0xA7);
+                                }
+                                else if (voice_command <= VOICE_CMD_TIME_12)
+                                {
+                                    timer_hours = (unsigned char)(voice_command - (unsigned char)0xB0 + (unsigned char)3);
+                                }
+                                else if (voice_command <= VOICE_CMD_TIME_22)
+                                {
+                                    timer_hours = (unsigned char)(voice_command - (unsigned char)0xC0 + (unsigned char)13);
+                                }
+                                else
+                                {
+                                    timer_hours = (unsigned char)(voice_command - (unsigned char)0xD0 + (unsigned char)23);
+                                }
+
+                                timer_seconds = (unsigned int)0;
+                                timer_k1_idle_sec = (unsigned char)0;
+                                timer_led1_blink  = (unsigned char)0;
+                                led_state = (unsigned char)(led_state | LED_MASK_1);
+                                TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x01);
+                                WIFI_ReportTimer(timer_hours);
+                            }
+                            break;
+
+                        /* 取消定时但保持设备当前开关状态 */
+                        case VOICE_CMD_TIMER_OFF:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                timer_hours = (unsigned char)0x00;
+                                timer_seconds = (unsigned int)0;
+                                timer_k1_idle_sec = (unsigned char)0;
+                                timer_led1_blink  = (unsigned char)0;
+                                led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_1));
+                                TM1628_SetTimerDisplay(timer_hours, (unsigned char)0x00);
+                                WIFI_ReportTimer(timer_hours);
+                            }
+                            break;
+
+                        /* 风扇固定档位命令 (仅在开机时生效) */
+                        case VOICE_CMD_SPEED_OFF:
+                        case VOICE_CMD_SPEED_1:
+                        case VOICE_CMD_SPEED_2:
+                        case VOICE_CMD_SPEED_3:
+                            if ((led_state & LED_MASK_3) != (unsigned char)0x00)
+                            {
+                                if (voice_command == VOICE_CMD_SPEED_OFF)
+                                {
+                                    fan_speed_level = FAN_SPEED_LEVEL_OFF;
+                                    led_state = (unsigned char)(led_state & (unsigned char)(~LED_MASK_4));
+                                }
+                                else
+                                {
+                                    fan_speed_level = (unsigned char)(voice_command - VOICE_CMD_SPEED_1 + (unsigned char)1);
+                                    led_state = (unsigned char)(led_state | LED_MASK_4);
+                                }
+
+                                TM1628_SetSpeedDisplay(fan_speed_level);
+                                WIFI_ReportFanSpeed(fan_speed_level);
+                            }
+                            break;
+
                         /* 滤网指示翻转 (逻辑同 K2) */
                         case VOICE_CMD_FILTER:
                             if ((led_state & LED_MASK_3) != (unsigned char)0x00)

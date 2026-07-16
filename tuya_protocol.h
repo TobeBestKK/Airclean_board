@@ -49,6 +49,42 @@
 #define VOICE_CMD_SPEED_DOWN ((unsigned char)0xA4)
 #define VOICE_CMD_TIMER_ON   ((unsigned char)0xA5)
 #define VOICE_CMD_FILTER     ((unsigned char)0xA6)
+#define VOICE_CMD_TIMER_DOWN ((unsigned char)0xA7)
+#define VOICE_CMD_TIME_1     ((unsigned char)0xA8)
+#define VOICE_CMD_TIME_2     ((unsigned char)0xA9)
+#define VOICE_CMD_TIME_3     ((unsigned char)0xB0)
+#define VOICE_CMD_TIME_4     ((unsigned char)0xB1)
+#define VOICE_CMD_TIME_5     ((unsigned char)0xB2)
+#define VOICE_CMD_TIME_6     ((unsigned char)0xB3)
+#define VOICE_CMD_TIME_7     ((unsigned char)0xB4)
+#define VOICE_CMD_TIME_8     ((unsigned char)0xB5)
+#define VOICE_CMD_TIME_9     ((unsigned char)0xB6)
+#define VOICE_CMD_TIME_10    ((unsigned char)0xB7)
+#define VOICE_CMD_TIME_11    ((unsigned char)0xB8)
+#define VOICE_CMD_TIME_12    ((unsigned char)0xB9)
+#define VOICE_CMD_TIME_13    ((unsigned char)0xC0)
+#define VOICE_CMD_TIME_14    ((unsigned char)0xC1)
+#define VOICE_CMD_TIME_15    ((unsigned char)0xC2)
+#define VOICE_CMD_TIME_16    ((unsigned char)0xC3)
+#define VOICE_CMD_TIME_17    ((unsigned char)0xC4)
+#define VOICE_CMD_TIME_18    ((unsigned char)0xC5)
+#define VOICE_CMD_TIME_19    ((unsigned char)0xC6)
+#define VOICE_CMD_TIME_20    ((unsigned char)0xC7)
+#define VOICE_CMD_TIME_21    ((unsigned char)0xC8)
+#define VOICE_CMD_TIME_22    ((unsigned char)0xC9)
+#define VOICE_CMD_TIME_23    ((unsigned char)0xD0)
+#define VOICE_CMD_TIME_24    ((unsigned char)0xD1)
+#define VOICE_CMD_TIMER_OFF  ((unsigned char)0xD2)
+#define VOICE_CMD_SPEED_OFF  ((unsigned char)0xD3)
+#define VOICE_CMD_SPEED_1    ((unsigned char)0xD4)
+#define VOICE_CMD_SPEED_2    ((unsigned char)0xD5)
+#define VOICE_CMD_SPEED_3    ((unsigned char)0xD6)
+
+#define VOICE_CMD_IS_VALID(value) \
+    ((((value) >= (unsigned char)0xA0) && ((value) <= (unsigned char)0xA9)) || \
+     (((value) >= (unsigned char)0xB0) && ((value) <= (unsigned char)0xB9)) || \
+     (((value) >= (unsigned char)0xC0) && ((value) <= (unsigned char)0xC9)) || \
+     (((value) >= (unsigned char)0xD0) && ((value) <= (unsigned char)0xD6)))
 
 /*=============================================================================
  * 全局变量
@@ -99,7 +135,7 @@ void WIFI_ReportPm25(unsigned int value);
 void WIFI_ReportFilterUsage(unsigned char usage);
 
 /* 提取语音命令字节 (语音与 WiFi 共享同一 UART)。
-   返回 0 = 无语音命令, 否则返回 A0~A6 语音命令码 */
+   返回 0 = 无语音命令, 否则返回合法的 A0~D6 语音命令码 */
 unsigned char WIFI_GetVoiceCommand(void);
 
 #endif /* __TUYA_PROTOCOL_H__ */

@@ -10,7 +10,7 @@
  *   1. ProductkeyMcuv[] 内 PID 须替换为涂鸦 IoT 平台实际产品 ID
  *   2. DP ID 定义见 tuya_protocol.h, 须与平台一致
  *   3. 语音模块 (SU-03T) 与 WiFi 模块共享同一 UART, 按字节值区分:
- *      0x55 开头 → WiFi 协议帧; 0xA0~0xA6 → 语音命令, 存入语音队列
+ *      0x55 开头 → WiFi 协议帧; 合法 A0~D6 命令字节 → 语音队列
  *===========================================================================*/
 
 /*=============================================================================
@@ -104,7 +104,7 @@ static unsigned char UART_BufPop(unsigned char *dat)
 
 /*=============================================================================
  * 语音命令队列
- * 协议解析器遇 0xA0~0xA6 时分流到此队列, 供 main.c 消费。
+ * 协议解析器遇合法语音命令字节时分流到此队列, 供 main.c 消费。
  *===========================================================================*/
 #define VOICE_CMD_QUEUE_SIZE  4   /* 用户每秒最多 1~2 条语音命令, 4 条容量够 */
 
@@ -230,7 +230,7 @@ volatile unsigned char wifi_state = 5;     /* WiFi 连接状态 (由模组上报
 volatile unsigned char wifi_dp_flag = 0;   /* DP 全量上报请求标志 */
 
 /* wifi_UART_Service: 从环形缓冲区逐字节解析 WiFi 协议帧;
-   遇 0xA0~0xA6 语音字节分流到语音队列。 */
+   遇合法语音字节分流到语音队列。 */
 static void wifi_UART_Service(void)
 {
     unsigned char dat;
@@ -249,7 +249,7 @@ static void wifi_UART_Service(void)
                 wifi_checksum = dat;
                 wifi_buf_idx = 1;
             }
-            else if (dat >= VOICE_CMD_WAKEUP && dat <= VOICE_CMD_FILTER)
+            else if (VOICE_CMD_IS_VALID(dat))
             {
                 VoiceCmd_Push(dat);          /* 语音命令: 分流到语音队列 */
                 wifi_buf_idx = 0;
