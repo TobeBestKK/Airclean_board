@@ -9,13 +9,10 @@
 #define SELF_CHECK_STAGE_FAN_LOW          ((unsigned char)0x04)
 #define SELF_CHECK_STAGE_FAN_MEDIUM       ((unsigned char)0x05)
 #define SELF_CHECK_STAGE_FAN_HIGH         ((unsigned char)0x06)
-#define SELF_CHECK_STAGE_SENSOR_WARMUP    ((unsigned char)0x07)
-#define SELF_CHECK_STAGE_SENSOR_RESULT    ((unsigned char)0x08)
-#define SELF_CHECK_STAGE_KEY              ((unsigned char)0x09)
-#define SELF_CHECK_STAGE_FINISH           ((unsigned char)0x0A)
+#define SELF_CHECK_STAGE_KEY              ((unsigned char)0x07)
+#define SELF_CHECK_STAGE_FINISH           ((unsigned char)0x08)
 
 #define SELF_CHECK_AUTO_STAGE_SECONDS     ((unsigned char)1)
-#define SELF_CHECK_SENSOR_RESULT_SECONDS  ((unsigned char)3)
 #define SELF_CHECK_KEY_TIMEOUT_SECONDS    ((unsigned char)10)
 #define SELF_CHECK_FINISH_SECONDS         ((unsigned char)2)
 

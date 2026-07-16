@@ -3,7 +3,6 @@
 #include "key.h"
 #include "timer.h"
 #include "tm1628.h"
-#include "gas_sensor.h"
 #include "fan.h"
 
 static unsigned char self_check_stage;
@@ -13,8 +12,6 @@ static unsigned char self_check_trigger_armed;
 static unsigned char self_check_key_seen;
 static unsigned char self_check_key_count;
 static unsigned char self_check_wait_key_release;
-static unsigned char self_check_sensor_ok;
-static unsigned int  self_check_sensor_value;
 
 void SelfCheck_Init(void)
 {
@@ -25,8 +22,6 @@ void SelfCheck_Init(void)
     self_check_key_seen = (unsigned char)0;
     self_check_key_count = (unsigned char)0;
     self_check_wait_key_release = (unsigned char)0;
-    self_check_sensor_ok = (unsigned char)0;
-    self_check_sensor_value = GAS_PM25_INVALID;
 }
 
 unsigned char SelfCheck_IsActive(void)
@@ -70,12 +65,9 @@ unsigned char SelfCheck_Process(
                 self_check_key_seen = (unsigned char)0;
                 self_check_key_count = (unsigned char)0;
                 self_check_wait_key_release = (unsigned char)0x01;
-                self_check_sensor_ok = (unsigned char)0x00;
-                self_check_sensor_value = GAS_PM25_INVALID;
                 self_check_hold_ticks = (unsigned int)0;
 
                 Fan_Stop();
-                Gas_PowerOff();
                 Timer0_ResetTick();
                 TM1628_AllOn();
 
@@ -185,53 +177,9 @@ unsigned char SelfCheck_Process(
         else if ((self_check_stage == SELF_CHECK_STAGE_FAN_HIGH)
                  && (self_check_elapsed_sec >= SELF_CHECK_AUTO_STAGE_SECONDS))
         {
-            self_check_stage = SELF_CHECK_STAGE_SENSOR_WARMUP;
-            self_check_elapsed_sec = (unsigned char)0;
-            Fan_Stop();
-            Gas_PowerOn();
-            Gas_StartWarmup();
-            TM1628_SetDefaultDisplay();
-            TM1628_SetPm25Display((unsigned int)Gas_GetWarmupRemaining());
-            TM1628_SetLeds((unsigned char)0x00);
-        }
-        else if (self_check_stage == SELF_CHECK_STAGE_SENSOR_WARMUP)
-        {
-            Gas_TickWarmupSecond();
-
-            if (Gas_IsWarmupDone() != (unsigned char)0x00)
-            {
-                self_check_sensor_value = Gas_ReadPm25();
-                self_check_sensor_ok =
-                    (self_check_sensor_value <= GAS_PM25_MAX)
-                        ? (unsigned char)0x01
-                        : (unsigned char)0x00;
-                self_check_stage = SELF_CHECK_STAGE_SENSOR_RESULT;
-                self_check_elapsed_sec = (unsigned char)0;
-
-                if (self_check_sensor_ok != (unsigned char)0x00)
-                {
-                    TM1628_SetPm25Display(self_check_sensor_value);
-                    TM1628_SetLeds(LED_MASK_1);
-                }
-                else
-                {
-                    TM1628_SetPm25Display((unsigned int)GAS_PM25_INVALID);
-                    TM1628_SetLeds(LED_MASK_2);
-                }
-            }
-            else
-            {
-                TM1628_SetPm25Display(
-                    (unsigned int)Gas_GetWarmupRemaining());
-            }
-        }
-        else if ((self_check_stage == SELF_CHECK_STAGE_SENSOR_RESULT)
-                 && (self_check_elapsed_sec
-                     >= SELF_CHECK_SENSOR_RESULT_SECONDS))
-        {
-            Gas_PowerOff();
             self_check_stage = SELF_CHECK_STAGE_KEY;
             self_check_elapsed_sec = (unsigned char)0;
+            Fan_Stop();
             self_check_key_seen = (unsigned char)0;
             self_check_key_count = (unsigned char)0;
             self_check_wait_key_release = (unsigned char)0x01;
@@ -253,7 +201,6 @@ unsigned char SelfCheck_Process(
                  && (self_check_elapsed_sec >= SELF_CHECK_FINISH_SECONDS))
         {
             Fan_Stop();
-            Gas_PowerOff();
             TM1628_AllOff();
             Timer0_ResetTick();
 
